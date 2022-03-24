@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -95,24 +93,17 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 }
 
 func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath string) {
+
+	cl := http.Client{Timeout: 5 * time.Second}
+
 	c := core.Loadchain(dbPath)
 	c.MinerAdd = miner
-	c.KnownNodes = append(c.KnownNodes, node)
-	Introduction(c, http.Client{Timeout: 5 * time.Second}, port)
-	network.Sync(&network.Objects{Ch: c}, http.Client{Timeout: 5 * time.Second})
+	n := network.GetNodeInfo(node, cl)
+	n.AddNode(c)
+
+	ni := network.NewNodeInfo(c, port)
+	ni.BroadNode(c, cl)
+
+	network.IBD(&network.Objects{Ch: c}, cl)
 	network.RunServer(c, port)
-}
-
-func Introduction(c *core.Chain, cl http.Client, port int) {
-	v := network.Version{
-		Address:    fmt.Sprintf("%d", port),
-		LastHash:   nil,
-		NodeHeight: 0,
-	}
-
-	b, _ := json.Marshal(v)
-
-	for _, node := range c.KnownNodes {
-		cl.Post(fmt.Sprintf("%s/intro", node), "application/json", bytes.NewReader(b))
-	}
 }

@@ -25,7 +25,14 @@ type Block struct {
 
 func NewBlock() *Block {
 	return &Block{
-		BH:           &blockHeader{},
+		BH: &blockHeader{
+			Timestamp:  0,
+			PrevHash:   []byte{},
+			BlockIndex: 0,
+			BlockHash:  []byte{},
+			Nonce:      0,
+			Difficulty: 0,
+		},
 		Transactions: make([]*Transaction, 0),
 	}
 }
@@ -110,14 +117,6 @@ func (c *Chain) BlockValidator(b Block) bool {
 		return true
 	}
 	return false
-}
-
-// if BlockValidator was true then node sync it's chain state base on block transactions inputs and outputs
-func (c *Chain) update_utxo_set(b Block) {
-	fmt.Println("Updateing UTXO set")
-	for _, tx := range b.Transactions {
-		c.MemPool.Chainstate.UpdateUtxoSet(tx)
-	}
 }
 
 func (b *Block) Validate_hash() bool {

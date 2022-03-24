@@ -9,12 +9,14 @@ import (
 func Loadchain(dbPath string) *Chain {
 
 	c, _ := NewChain(dbPath)
-	c.LastBlock = ReadLastBlock(c.DB)
+	block := ReadLastBlock(c.DB)
 
-	if c.LastBlock == nil {
+	if len(block.BH.BlockHash) == 0 {
 		fmt.Println("There is no block in database")
 		return c
 	}
+
+	c.LastBlock = block
 	c.ChainHeight = c.LastBlock.BH.BlockIndex + 1
 	fmt.Printf("ChainHeight is %d\nlast block index: %d\n", c.ChainHeight, c.LastBlock.BH.BlockIndex)
 
@@ -26,22 +28,24 @@ func Loadchain(dbPath string) *Chain {
 
 func ReadLastBlock(d database.Database) *Block {
 
+	last_block := NewBlock()
+
 	lh, err := d.DB.Get([]byte("last_hash"), nil)
 	if err != nil {
-		return nil
+		return last_block
 	}
 
 	b, err := d.DB.Get(lh, nil)
 	if err != nil {
-		return nil
+		return last_block
 	}
 
-	bl := Deserialize(b, new(Block))
+	i := Deserialize(b, last_block)
 
-	if block, ok := bl.(*Block); ok {
+	if block, ok := i.(*Block); ok {
 		return block
 
 	}
 
-	return nil
+	return last_block
 }

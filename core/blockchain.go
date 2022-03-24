@@ -21,7 +21,7 @@ type Chain struct {
 	Chainstate  *ChainState
 	DB          database.Database
 	MinerAdd    Address
-	KnownNodes  []string
+	KnownNodes  map[NodeID]Node
 	DBPath      string
 }
 
@@ -32,8 +32,11 @@ type MinedBlock struct {
 
 func NewChain(path string) (*Chain, error) {
 	c := &Chain{
-		Blocks:    make([]*Block, 0),
-		LastBlock: &Block{},
+		ChainId:     0,
+		ChainHeight: 0,
+		Blocks:      make([]*Block, 0),
+		LastBlock:   NewBlock(),
+
 		MemPool: &txsPool{
 			Transactions: []*Transaction{},
 			Chainstate: &ChainState{
@@ -43,9 +46,10 @@ func NewChain(path string) (*Chain, error) {
 		Chainstate: &ChainState{
 			Utxos: make(map[Account][]*UTXO),
 		},
+		MinerAdd:   nil,
+		KnownNodes: make(map[NodeID]Node),
+		DBPath:     path,
 	}
-	c.ChainId = 0
-	c.DBPath = path
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.MemPool.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
 	return c, nil
@@ -66,20 +70,6 @@ func (c *Chain) Print() {
 
 }
 
-func (c *Chain) DeleteNode(node string) {
-
-	s := []string{}
-
-	for _, n := range c.KnownNodes {
-		if n == node {
-			continue
-		}
-		s = append(s, n)
-	}
-	c.KnownNodes = s
-
-}
-
 func (c *Chain) Miner() {
 	fmt.Println("Miner Function start!")
 	cl := http.Client{Timeout: 5 * time.Second}
@@ -92,19 +82,10 @@ func (c *Chain) Miner() {
 					continue
 				}
 				for _, node := range c.KnownNodes {
-					cl.Post(fmt.Sprintf("%s/minedblock", node), "application/json", bytes.NewReader(b))
+					cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
 				}
 			}
 		}
 		time.Sleep(5 * time.Second)
 	}
-}
-
-func (c *Chain) NodeExist(n string) bool {
-	for _, node := range c.KnownNodes {
-		if node == n {
-			return true
-		}
-	}
-	return false
 }

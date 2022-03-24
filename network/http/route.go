@@ -2,6 +2,8 @@ package network
 
 import (
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/labstack/echo/v4"
@@ -19,30 +21,30 @@ func RunServer(c *core.Chain, port int) {
 	e := echo.New()
 	e.GET("/getutxo", o.sendUtxoset)
 	e.POST("sendtrx", o.getTrx)
-	e.GET("/getver", o.SendVer)
+	e.GET("/getnodeinfo", o.SendNodeInfo)
 	e.GET("/getgen", o.SendGen)
 	e.POST("getdata", o.SendInv)
 	e.POST("/getblock", o.SendBlock)
 	e.POST("/minedblock", o.MinedBlock)
-	e.POST("/intro", o.Intro)
+	e.POST("/newnode", o.NewNode)
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
 }
 
-func (o *Objects) Intro(ctx echo.Context) error {
-	fmt.Println("Intro func")
-	v := Version{}
-	err := ctx.Bind(&v)
+func (o *Objects) NewNode(ctx echo.Context) error {
+
+	n := &NodeInfo{}
+	err := ctx.Bind(n)
 	if err != nil {
 		return err
 	}
 
-	v.Address = fmt.Sprintf("http://%s:%s", ctx.RealIP(), v.Address)
-	fmt.Println(v.Address)
-
-	if !o.Ch.NodeExist(v.Address) {
-		o.Ch.KnownNodes = append(o.Ch.KnownNodes, v.Address)
-		fmt.Printf("Node %s added to known nodes list\n", v.Address)
+	if n.FullAdd == "" && n.Sender == n.NodeId {
+		n.FullAdd = fmt.Sprintf("http://%s:%s", ctx.RealIP(), n.Port)
 	}
+	// Add to known nodes
+	n.AddNode(o.Ch)
+
+	n.BroadNode(o.Ch, http.Client{Timeout: 5 * time.Second})
 	return nil
 }
 
@@ -103,11 +105,12 @@ func (o *Objects) SendInv(ctx echo.Context) error {
 
 }
 
-func (o *Objects) SendVer(ctx echo.Context) error {
-	v := &Version{fmt.Sprintf("%d", o.Port), o.Ch.LastBlock.BH.BlockHash, o.Ch.ChainHeight}
+func (o *Objects) SendNodeInfo(ctx echo.Context) error {
+	n := NewNodeInfo(o.Ch, o.Port)
+
 	fmt.Printf("\nNode %s wants version \n", ctx.RealIP())
 
-	ctx.JSONPretty(200, v, " ")
+	ctx.JSONPretty(200, n, " ")
 	return nil
 }
 

@@ -12,60 +12,66 @@ import (
 	"github.com/alikarimi999/shitcoin/core"
 )
 
-func Sync(c *Objects, cl http.Client) {
+// Initial block download refers to the process where nodes synchronize themselves to the network
+//by downloading blocks that are new to them
+func IBD(o *Objects, cl http.Client) {
 
-	vs := GetVersion(c.Ch.KnownNodes, cl)
 	// sync node is node with best chain
-	syncNode := &Version{}
+	syncNode := core.Node{}
 
-	for j := 0; j < len(vs); j++ {
-		if syncNode.NodeHeight < vs[j].NodeHeight {
-			syncNode = vs[j]
+	for _, node := range o.Ch.KnownNodes {
+		if syncNode.NodeHeight <= node.NodeHeight {
+			syncNode = node
 		}
 	}
 
-	if syncNode.NodeHeight == c.Ch.ChainHeight {
-		if !bytes.Equal(syncNode.LastHash, c.Ch.LastBlock.BH.BlockHash) {
-			fmt.Printf(" Node \"%s\" and your node are not in same network please connect to another node\n", syncNode.Address)
-			c.Ch.DeleteNode(syncNode.Address)
+	if syncNode.NodeHeight == o.Ch.ChainHeight {
+		if !bytes.Equal(syncNode.LastHash, o.Ch.LastBlock.BH.BlockHash) {
+			fmt.Printf(" Node \"%s\" and your node are not in same network please connect to another node\n", syncNode.FullAdd)
+			delete(o.Ch.KnownNodes, syncNode.NodeId)
 			return
 		}
-		fmt.Println("Node is Updated!")
+		fmt.Printf("Node is Synced with Node %s with Address %s\n", syncNode.NodeId, syncNode.FullAdd)
 	}
 
-	if syncNode.NodeHeight > c.Ch.ChainHeight {
+	if syncNode.NodeHeight > o.Ch.ChainHeight {
 
-		fmt.Printf("Sync node is %s with %d chain height\n", syncNode.Address, syncNode.NodeHeight)
+		fmt.Printf("Sync node is %s with %d chain height\n", syncNode.FullAdd, syncNode.NodeHeight)
+		fmt.Println("Trying to Sync with Sync Node")
 
-		if c.Ch.ChainHeight == 0 {
-			block := getGen(syncNode.Address, cl)
-
-			c.Ch.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
-			err := core.SaveGenInDB(*block, &c.Ch.DB)
+		if o.Ch.ChainHeight == 0 {
+			// Downloading genesis block
+			block := getGen(syncNode.FullAdd, cl)
+			// Updating UTXO Set base on genesis block transaction
+			o.Ch.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
+			// Save Genesis block in database
+			err := core.SaveGenInDB(*block, &o.Ch.DB)
 			if err != nil {
 				log.Fatalln(err)
 			}
 			fmt.Printf("Genesis Block added to database\n")
-			c.Ch.LastBlock = block
-			c.Ch.ChainHeight++
+			o.Ch.LastBlock = block
+			o.Ch.ChainHeight++
 		}
-		bh, err := getData(c, syncNode.Address, cl)
+		// Getting hash of remain mined Blocks from sync node
+		bh, err := getData(o, syncNode.FullAdd, cl)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
 
+		// Downloading mined Blocks
 		for i := 0; i < len(bh); i++ {
-			hash := bh[blockIndex(c.Ch.LastBlock.BH.BlockIndex+1)]
+			hash := bh[blockIndex(o.Ch.LastBlock.BH.BlockIndex+1)]
 
-			block := getBlock(hash, syncNode.Address, cl)
+			block := getBlock(hash, syncNode.FullAdd, cl)
 			if block == nil {
 				break
 			}
 			fmt.Printf("Block %x Downloaded\n", block.BH.BlockHash)
-			if !c.Ch.AddNewBlock(block) {
+			if !o.Ch.AddNewBlock(block) {
 				break
 			}
-			c.Ch.LastBlock = block
+			o.Ch.LastBlock = block
 
 		}
 	}
@@ -155,25 +161,71 @@ func getData(c *Objects, syncAddress string, cl http.Client) (map[blockIndex][]b
 
 }
 
-func GetVersion(nodes []string, cl http.Client) []*Version {
-	var vs []*Version
+// Get Node information from an address that running shitcoin client
+func GetNodeInfo(fulladd string, cl http.Client) *NodeInfo {
 
-	for _, node := range nodes {
-		resp, err := cl.Get(fmt.Sprintf("%s/getver", node))
-		if err != nil {
-			fmt.Println(err.Error())
+	resp, err := cl.Get(fmt.Sprintf("%s/getnodeinfo", fulladd))
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err.Error())
+		return nil
+	}
+	v := new(NodeInfo)
+	json.Unmarshal(body, v)
+	v.FullAdd = fulladd
+
+	return v
+}
+
+// Add Node infromation that received from network to KnownNodes
+func (n *NodeInfo) AddNode(c *core.Chain) {
+
+	if _, ok := c.KnownNodes[n.NodeId]; !ok {
+
+		c.KnownNodes[n.NodeId] = core.Node{
+			NodeId:     n.NodeId,
+			FullAdd:    n.FullAdd,
+			LastHash:   n.LastHash,
+			NodeHeight: n.NodeHeight,
+		}
+		fmt.Printf("Add Node %s with address %s to Known Nodes\n", n.NodeId, n.FullAdd)
+		return
+	}
+	fmt.Printf("Node %s Exis in Known Nodes\n", n.NodeId)
+
+}
+
+// Creat a NodeInfo structure for broadcasting to network
+func NewNodeInfo(c *core.Chain, port int) *NodeInfo {
+
+	n := NodeInfo{
+		Sender:     core.NodeID(c.MinerAdd),
+		NodeId:     core.NodeID(c.MinerAdd),
+		Port:       fmt.Sprintf("%d", port),
+		FullAdd:    "",
+		LastHash:   c.LastBlock.BH.BlockHash,
+		NodeHeight: c.ChainHeight,
+	}
+	return &n
+}
+
+func (n *NodeInfo) BroadNode(c *core.Chain, cl http.Client) {
+
+	for _, node := range c.KnownNodes {
+		if node.NodeId == n.Sender || node.NodeId == n.NodeId {
 			continue
 		}
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			fmt.Println(err.Error())
-			continue
-		}
-		v := new(Version)
-		json.Unmarshal(body, v)
-		v.Address = node
-		vs = append(vs, v)
+
+		// change NodeInfo sender to this Node NodeID
+		n.Sender = core.NodeID(c.MinerAdd)
+		b, _ := json.Marshal(n)
+
+		fmt.Printf("Broadcast NodeInfo %s  with address (%s) to Node %s\n", n.NodeId, n.FullAdd, node.NodeId)
+		cl.Post(fmt.Sprintf("%s/newnode", node.FullAdd), "application/json", bytes.NewReader(b))
 	}
 
-	return vs
 }
