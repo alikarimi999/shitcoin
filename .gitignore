@@ -16,4 +16,4 @@
 
 
 # Blockchain Database directory
-.data
+*.data
