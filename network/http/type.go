@@ -35,6 +35,8 @@ type GetData struct {
 }
 
 type GetBlock struct {
+	// node that request for block
+	Node      core.NodeID
 	BlockHash []byte
 }
 

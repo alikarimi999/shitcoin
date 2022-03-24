@@ -1,12 +1,9 @@
 package core
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/database"
@@ -25,9 +22,10 @@ type Chain struct {
 	DBPath      string
 }
 
-type MinedBlock struct {
-	Block *Block
-	Miner Address
+type MsgBlock struct {
+	Sender NodeID
+	Block  *Block
+	Miner  Address
 }
 
 func NewChain(path string) (*Chain, error) {
@@ -62,28 +60,16 @@ func (c *Chain) SetupChain(miner Address, amount float64) error {
 	return err
 }
 
-func (c *Chain) Print() {
-	fmt.Printf("\n%s Chain ID: %d  %s\n\n", strings.Repeat("=", 25), c.ChainId, strings.Repeat("=", 25))
-	for _, b := range c.Blocks {
-		b.Print()
-	}
-
-}
-
 func (c *Chain) Miner() {
 	fmt.Println("Miner Function start!")
 	cl := http.Client{Timeout: 5 * time.Second}
 	for {
 		if len(c.MemPool.Transactions) >= 3 {
-			if Mine(c, c.MinerAdd, 20) {
-				mb := MinedBlock{c.LastBlock, c.MinerAdd}
-				b, err := json.Marshal(mb)
-				if err != nil {
-					continue
-				}
-				for _, node := range c.KnownNodes {
-					cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
-				}
+			if Mine(c, 20) {
+				// Broadcasting Mined block in network
+				mb := NewMsgdBlock(c.LastBlock, NodeID(c.MinerAdd), c.MinerAdd)
+				c.BroadBlock(mb, cl)
+
 			}
 		}
 		time.Sleep(5 * time.Second)

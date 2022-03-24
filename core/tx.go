@@ -135,9 +135,9 @@ func (tx Transaction) TrimmeTX() *Transaction {
 }
 
 // Transfer Transactions from transaction pool to Block
-func (tp *txsPool) TransferTxs2Block(b *Block, miner Address, amount int) error {
+func (tp *txsPool) TransferTxs2Block(b *Block, amount int) error {
 
-	tp.addMinerReward(miner, amount)
+	tp.addMinerReward(b.BH.Miner, amount)
 
 	b.Transactions = tp.Transactions
 

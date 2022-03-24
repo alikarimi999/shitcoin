@@ -7,7 +7,7 @@ import (
 
 func (c *Chain) SyncUtxoSet() error {
 
-	SaveUTXOsInDB(*c.MemPool.Chainstate)
+	saveUTXOsInDB(*c.MemPool.Chainstate)
 
 	return nil
 }

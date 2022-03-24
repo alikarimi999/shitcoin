@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
+	"net/http"
 )
 
 type blockHeader struct {
@@ -14,6 +15,7 @@ type blockHeader struct {
 	PrevHash   []byte
 	BlockIndex uint64
 	BlockHash  []byte
+	Miner      Address
 	Nonce      uint64
 	Difficulty uint64
 }
@@ -30,22 +32,12 @@ func NewBlock() *Block {
 			PrevHash:   []byte{},
 			BlockIndex: 0,
 			BlockHash:  []byte{},
+			Miner:      []byte{},
 			Nonce:      0,
 			Difficulty: 0,
 		},
 		Transactions: make([]*Transaction, 0),
 	}
-}
-
-func (b *Block) Print() {
-	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
-
-	fmt.Printf("\nBlock: %d\nHash: %x\n\n", b.BH.BlockIndex, b.BH.BlockHash)
-	for _, tx := range b.Transactions {
-		tx.Print()
-	}
-	fmt.Printf("\n%s\n", strings.Repeat("=", 100))
-
 }
 
 func (b *Block) Serialize() []byte {
@@ -55,6 +47,7 @@ func (b *Block) Serialize() []byte {
 			b.BH.PrevHash,
 			Int2Hex(int64(b.BH.BlockIndex)),
 			Int2Hex(int64(b.BH.Difficulty)),
+			b.BH.Miner,
 			Int2Hex(int64(b.BH.Nonce)),
 			Int2Hex(b.BH.Timestamp),
 			SerializeTxs(b.Transactions),
@@ -86,21 +79,44 @@ func Int2Hex(n int64) []byte {
 // =================================================================================================================
 // =================================================================================================================
 
-func (c *Chain) AddNewBlock(b *Block) bool {
-
-	if c.BlockValidator(*b) {
-		fmt.Printf("Block %x is valid\n", b.BH.BlockHash)
-		err := SaveBlockInDB(*b, &c.DB)
-		if err != nil {
-			log.Fatalf("Block %x did not add to database\n\n", b.BH.BlockHash)
-		}
-		fmt.Printf("Block %d with hash %x successfully added to database\n\n", b.BH.BlockIndex, b.BH.BlockHash)
-
-		c.SyncUtxoSet()
-		return true
+func NewMsgdBlock(b *Block, sender NodeID, miner Address) *MsgBlock {
+	mb := &MsgBlock{
+		Sender: sender,
+		Block:  b,
+		Miner:  miner,
 	}
-	fmt.Printf("Block %x is not valid\n", b.BH.BlockHash)
-	return false
+	return mb
+}
+
+// This function Broadcast a new mined block in network
+func (c *Chain) BroadBlock(mb *MsgBlock, cl http.Client) {
+
+	for _, node := range c.KnownNodes {
+		// dont send to miner of block or sender
+		if mb.Sender == node.NodeId || NodeID(mb.Miner) == node.NodeId {
+			continue
+		}
+
+		prev_sender := mb.Sender
+
+		// Replace Message Block Sender ID with this node NodeID
+		mb.Sender = NodeID(c.MinerAdd)
+		b, _ := json.Marshal(mb)
+		fmt.Printf("Sending block %x which received from Node %s to Node %s\n", mb.Block.BH.BlockHash, prev_sender, node.NodeId)
+		cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
+	}
+
+}
+
+func (c *Chain) AddBlockInDB(b *Block) {
+
+	// Saving valid block in database
+	err := saveBlockInDB(*b, &c.DB)
+	if err != nil {
+		log.Fatalf("Block %x did not add to database\n\n", b.BH.BlockHash)
+	}
+	fmt.Printf("Block %d with hash %x successfully added to database\n\n", b.BH.BlockIndex, b.BH.BlockHash)
+
 }
 
 // this function check validation of block that mined by another node

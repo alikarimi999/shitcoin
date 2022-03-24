@@ -45,7 +45,7 @@ func ReadBlock(d database.Database, hash []byte) *Block {
 	return nil
 }
 
-func SaveBlockInDB(b Block, d *database.Database) error {
+func saveBlockInDB(b Block, d *database.Database) error {
 
 	block := Serialize(b)
 
@@ -62,7 +62,7 @@ func SaveBlockInDB(b Block, d *database.Database) error {
 	return err
 }
 
-func SaveUTXOsInDB(u ChainState) error {
+func saveUTXOsInDB(u ChainState) error {
 
 	for account, utxos := range u.Utxos {
 		key := []byte(account)

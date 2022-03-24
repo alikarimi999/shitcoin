@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 
 	"github.com/alikarimi999/shitcoin/core"
 )
@@ -63,45 +64,53 @@ func IBD(o *Objects, cl http.Client) {
 		for i := 0; i < len(bh); i++ {
 			hash := bh[blockIndex(o.Ch.LastBlock.BH.BlockIndex+1)]
 
-			block := getBlock(hash, syncNode.FullAdd, cl)
-			if block == nil {
+			mb := getBlock(hash, core.NodeID(o.Ch.MinerAdd), syncNode.FullAdd, cl)
+			if reflect.DeepEqual(mb, new(core.MsgBlock)) {
 				break
 			}
-			fmt.Printf("Block %x Downloaded\n", block.BH.BlockHash)
-			if !o.Ch.AddNewBlock(block) {
+			fmt.Printf("Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
+
+			// check if block is valid
+			if !o.Ch.BlockValidator(*mb.Block) {
+				fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 				break
+
 			}
-			o.Ch.LastBlock = block
+			fmt.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
+			o.Ch.AddBlockInDB(mb.Block)
+			o.Ch.SyncUtxoSet()
+
+			o.Ch.LastBlock = mb.Block
 
 		}
 	}
 }
 
-func getBlock(hash []byte, syncAddress string, cl http.Client) *core.Block {
-	data := GetBlock{hash}
+func getBlock(hash []byte, nid core.NodeID, syncAddress string, cl http.Client) *core.MsgBlock {
+	data := GetBlock{nid, hash}
+	mb := new(core.MsgBlock)
+
 	msg, err := json.Marshal(data)
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return mb
 	}
 	resp, err := cl.Post(fmt.Sprintf("%s/getblock", syncAddress), "application/json", bytes.NewReader(msg))
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return mb
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return mb
 	}
-
-	b := new(core.Block)
-	err = json.Unmarshal(body, b)
+	err = json.Unmarshal(body, mb)
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return mb
 	}
-	return b
+	return mb
 
 }
 

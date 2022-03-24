@@ -43,7 +43,7 @@ func (c *Chain) creatGenesis(to Address, amount float64) error {
 
 func SaveGenInDB(b Block, d *database.Database) error {
 
-	err := SaveBlockInDB(b, d)
+	err := saveBlockInDB(b, d)
 	if err != nil {
 		log.Fatalln(err)
 	}

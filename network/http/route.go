@@ -1,6 +1,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -49,18 +50,29 @@ func (o *Objects) NewNode(ctx echo.Context) error {
 }
 
 func (o *Objects) MinedBlock(ctx echo.Context) error {
-	mb := new(core.MinedBlock)
+	mb := new(core.MsgBlock)
 	err := ctx.Bind(mb)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Block %x mined by %s and received from Node %s\n", mb.Block.BH.BlockHash, mb.Miner, ctx.RealIP())
-
+	fmt.Printf("Block %x mined by %s and received from Node %s\n", mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
+	fmt.Println(mb.Block.BH.BlockIndex, o.Ch.LastBlock.BH.BlockIndex)
 	if mb.Block.BH.BlockIndex-1 == o.Ch.LastBlock.BH.BlockIndex {
 		fmt.Println("  Proccessing Block")
-		if o.Ch.AddNewBlock(mb.Block) {
-			o.Ch.LastBlock = mb.Block
+		if !o.Ch.BlockValidator(*mb.Block) {
+			fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
+			return errors.New(fmt.Sprintf("block %x is not valid\n", mb.Block.BH.BlockHash))
+
 		}
+		fmt.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
+
+		// Broadcasting valid new Mined block in network
+		o.Ch.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
+
+		o.Ch.AddBlockInDB(mb.Block)
+		o.Ch.SyncUtxoSet()
+
+		o.Ch.LastBlock = mb.Block
 
 	}
 
@@ -76,9 +88,10 @@ func (o *Objects) SendBlock(ctx echo.Context) error {
 	hash := gb.BlockHash
 
 	block := core.ReadBlock(o.Ch.DB, hash)
+	mb := core.NewMsgdBlock(block, core.NodeID(o.Ch.MinerAdd), block.BH.Miner)
 
-	fmt.Printf("\nNode %s wants Block %x\n", ctx.RealIP(), block.BH.BlockHash)
-	ctx.JSONPretty(200, *block, " ")
+	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)
+	ctx.JSONPretty(200, mb, " ")
 
 	return nil
 }
