@@ -18,8 +18,9 @@ type Chain struct {
 	Chainstate  *ChainState
 	DB          database.Database
 	MinerAdd    Address
-	KnownNodes  map[NodeID]Node
+	KnownNodes  map[NodeID]*Node
 	DBPath      string
+	Port        int
 }
 
 type MsgBlock struct {
@@ -28,7 +29,7 @@ type MsgBlock struct {
 	Miner  Address
 }
 
-func NewChain(path string) (*Chain, error) {
+func NewChain(path string, port int) (*Chain, error) {
 	c := &Chain{
 		ChainId:     0,
 		ChainHeight: 0,
@@ -45,8 +46,9 @@ func NewChain(path string) (*Chain, error) {
 			Utxos: make(map[Account][]*UTXO),
 		},
 		MinerAdd:   nil,
-		KnownNodes: make(map[NodeID]Node),
+		KnownNodes: make(map[NodeID]*Node),
 		DBPath:     path,
+		Port:       port,
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.MemPool.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
@@ -74,4 +76,17 @@ func (c *Chain) Miner() {
 		}
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func (c *Chain) NewNode() *Node {
+
+	n := &Node{
+		NodeId:     NodeID(c.MinerAdd),
+		FullAdd:    "",
+		Port:       fmt.Sprintf(":%d", c.Port),
+		LastHash:   c.LastBlock.BH.BlockHash,
+		NodeHeight: c.ChainHeight,
+	}
+
+	return n
 }

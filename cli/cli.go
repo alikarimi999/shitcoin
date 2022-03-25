@@ -78,7 +78,7 @@ func (cli *Commandline) Run() {
 }
 
 func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
-	c, err := core.NewChain(dbPath)
+	c, err := core.NewChain(dbPath, port)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -96,14 +96,13 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 
 	cl := http.Client{Timeout: 5 * time.Second}
 
-	c := core.Loadchain(dbPath)
+	c := core.Loadchain(dbPath, port)
 	c.MinerAdd = miner
-	n := network.GetNodeInfo(node, cl)
-	n.AddNode(c)
 
-	ni := network.NewNodeInfo(c, port)
-	ni.BroadNode(c, cl)
-
+	err := network.ShareNode(c, node, 8, cl)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
 	network.IBD(&network.Objects{Ch: c}, cl)
 	network.RunServer(c, port)
 }

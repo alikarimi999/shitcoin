@@ -18,7 +18,7 @@ import (
 func IBD(o *Objects, cl http.Client) {
 
 	// sync node is node with best chain
-	syncNode := core.Node{}
+	syncNode := &core.Node{}
 
 	for _, node := range o.Ch.KnownNodes {
 		if syncNode.NodeHeight <= node.NodeHeight {
@@ -43,6 +43,10 @@ func IBD(o *Objects, cl http.Client) {
 		if o.Ch.ChainHeight == 0 {
 			// Downloading genesis block
 			block := getGen(syncNode.FullAdd, cl)
+
+			o.Ch.LastBlock = block
+			o.Ch.ChainHeight++
+
 			// Updating UTXO Set base on genesis block transaction
 			o.Ch.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
 			// Save Genesis block in database
@@ -51,8 +55,7 @@ func IBD(o *Objects, cl http.Client) {
 				log.Fatalln(err)
 			}
 			fmt.Printf("Genesis Block added to database\n")
-			o.Ch.LastBlock = block
-			o.Ch.ChainHeight++
+
 		}
 		// Getting hash of remain mined Blocks from sync node
 		bh, err := getData(o, syncNode.FullAdd, cl)
@@ -170,71 +173,97 @@ func getData(c *Objects, syncAddress string, cl http.Client) (map[blockIndex][]b
 
 }
 
-// Get Node information from an address that running shitcoin client
-func GetNodeInfo(fulladd string, cl http.Client) *NodeInfo {
+func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*core.Node {
 
-	resp, err := cl.Get(fmt.Sprintf("%s/getnodeinfo", fulladd))
+	src_nodes := []*core.Node{}
+
+	// first element in slice always refer to node itself
+	src_nodes = append(src_nodes, c.NewNode())
+
+	for _, n := range c.KnownNodes {
+		src_nodes = append(src_nodes, n)
+	}
+	gn := &GetNode{src_nodes, nil}
+
+	b, _ := json.Marshal(gn)
+	resp, err := cl.Post(fmt.Sprintf("%s/getnode", dst), "application/json", bytes.NewReader(b))
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return src_nodes
 	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println(err.Error())
-		return nil
+		return src_nodes
 	}
-	v := new(NodeInfo)
-	json.Unmarshal(body, v)
-	v.FullAdd = fulladd
+	gn = new(GetNode)
+	err = json.Unmarshal(body, gn)
+	if err != nil {
+		fmt.Println(err.Error())
+		return src_nodes
+	}
 
-	return v
+	// first DstNodes always is the node that share it's known nodes with this node
+	gn.ShareNodes[0].FullAdd = dst
+	return gn.ShareNodes
 }
 
-// Add Node infromation that received from network to KnownNodes
-func (n *NodeInfo) AddNode(c *core.Chain) {
+func ShareNode(c *core.Chain, dst string, max int, cl http.Client) error {
 
-	if _, ok := c.KnownNodes[n.NodeId]; !ok {
+	// nodes that we didn't ask to share their nodes with us yet
+	u_nodes := []*core.Node{}
 
-		c.KnownNodes[n.NodeId] = core.Node{
-			NodeId:     n.NodeId,
-			FullAdd:    n.FullAdd,
-			LastHash:   n.LastHash,
-			NodeHeight: n.NodeHeight,
+Out:
+	for i := 0; i <= max; i++ {
+
+		fmt.Printf("Requesting New Nodes from Node Address %s\n", dst)
+
+		if len(c.KnownNodes) >= max {
+			return fmt.Errorf("...this node has enough known node")
 		}
-		fmt.Printf("Add Node %s with address %s to Known Nodes\n", n.NodeId, n.FullAdd)
-		return
-	}
-	fmt.Printf("Node %s Exis in Known Nodes\n", n.NodeId)
-
-}
-
-// Creat a NodeInfo structure for broadcasting to network
-func NewNodeInfo(c *core.Chain, port int) *NodeInfo {
-
-	n := NodeInfo{
-		Sender:     core.NodeID(c.MinerAdd),
-		NodeId:     core.NodeID(c.MinerAdd),
-		Port:       fmt.Sprintf("%d", port),
-		FullAdd:    "",
-		LastHash:   c.LastBlock.BH.BlockHash,
-		NodeHeight: c.ChainHeight,
-	}
-	return &n
-}
-
-func (n *NodeInfo) BroadNode(c *core.Chain, cl http.Client) {
-
-	for _, node := range c.KnownNodes {
-		if node.NodeId == n.Sender || node.NodeId == n.NodeId {
+		share_nodes := GetNewNodes(c, dst, cl)
+		if len(share_nodes) == 0 {
+			fmt.Printf("...Node %s hadn't new node to share with us", dst)
 			continue
 		}
 
-		// change NodeInfo sender to this Node NodeID
-		n.Sender = core.NodeID(c.MinerAdd)
-		b, _ := json.Marshal(n)
+		for _, n := range share_nodes {
 
-		fmt.Printf("Broadcast NodeInfo %s  with address (%s) to Node %s\n", n.NodeId, n.FullAdd, node.NodeId)
-		cl.Post(fmt.Sprintf("%s/newnode", node.FullAdd), "application/json", bytes.NewReader(b))
+			fmt.Printf("...This Node %s Recieved from %s\n", n.NodeId, dst)
+
+			if len(c.KnownNodes) >= max {
+				break Out
+			}
+
+			// dont add if n refers to this node
+			if n.NodeId == core.NodeID(c.MinerAdd) {
+				continue
+			}
+			if _, ok := c.KnownNodes[n.NodeId]; ok {
+				fmt.Println("...Node already exist")
+				continue
+			}
+
+			c.KnownNodes[n.NodeId] = n
+			fmt.Printf("...Node %s with address %s added to KnownNodes\n", n.NodeId, n.FullAdd)
+
+			// dont send getnode to previous destination node again
+			if n.FullAdd != dst {
+				u_nodes = append(u_nodes, n)
+			}
+
+		}
+
+		// get new nodes from nodes that sends by previous nodes
+		if len(u_nodes) == 0 {
+			fmt.Println("There is not any other node for requesting new node ")
+			return nil
+		}
+		dst = u_nodes[i].FullAdd
+		// delet this node from list
+		u_nodes = append(u_nodes[:i], u_nodes[i+1:]...)
 	}
 
+	return nil
 }

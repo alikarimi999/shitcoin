@@ -17,14 +17,9 @@ type msgUTXOSet struct {
 	Utxos   []core.UTXO  `json:"utxos"`
 }
 
-type NodeInfo struct {
-	Sender core.NodeID
-	NodeId core.NodeID
-	// node FullAdd
-	Port       string
-	FullAdd    string
-	LastHash   []byte
-	NodeHeight uint64
+type GetNode struct {
+	SrcNodes   []*core.Node
+	ShareNodes []*core.Node
 }
 
 type GetData struct {

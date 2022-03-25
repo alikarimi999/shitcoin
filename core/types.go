@@ -16,6 +16,7 @@ type Node struct {
 	NodeId NodeID
 	// Node full address
 	FullAdd    string
+	Port       string
 	LastHash   []byte
 	NodeHeight uint64
 }

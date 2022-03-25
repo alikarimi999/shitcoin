@@ -6,9 +6,9 @@ import (
 	"github.com/alikarimi999/shitcoin/database"
 )
 
-func Loadchain(dbPath string) *Chain {
+func Loadchain(dbPath string, port int) *Chain {
 
-	c, _ := NewChain(dbPath)
+	c, _ := NewChain(dbPath, port)
 	block := ReadLastBlock(c.DB)
 
 	if len(block.BH.BlockHash) == 0 {

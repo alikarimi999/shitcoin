@@ -1,7 +1,6 @@
 package network
 
 import (
-	"fmt"
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core"
@@ -21,7 +20,7 @@ func (h *Objects) getTrx(ctx echo.Context) error {
 	if err != nil {
 		return ctx.String(200, err.Error())
 	}
-	return ctx.String(200, fmt.Sprintf("Transaction added to MemPool\n"))
+	return ctx.String(200, "Transaction added to MemPool")
 }
 
 func (h *Objects) sendUtxoset(ctx echo.Context) error {
