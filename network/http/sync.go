@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
 )
@@ -42,7 +43,7 @@ func (n *NodesQueue) Pop() *core.Node {
 	case node := <-n.nodes:
 		return node
 	default:
-		fmt.Println("There is not any other node for requesting new node ")
+		fmt.Println("Nodes Queue is empty ")
 		return &core.Node{}
 	}
 }
@@ -74,25 +75,8 @@ func IBD(o *Objects, cl http.Client) {
 		fmt.Printf("Sync node is %s with %d chain height\n", syncNode.FullAdd, syncNode.NodeHeight)
 		fmt.Println("Trying to Sync with Sync Node")
 
-		if o.Ch.ChainHeight == 0 {
-			// Downloading genesis block
-			block := getGen(syncNode.FullAdd, cl)
-
-			o.Ch.LastBlock = block
-			o.Ch.ChainHeight++
-
-			// Updating UTXO Set base on genesis block transaction
-			o.Ch.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
-			// Save Genesis block in database
-			err := core.SaveGenInDB(*block, &o.Ch.DB)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			fmt.Printf("Genesis Block added to database\n")
-
-		}
 		// Getting hash of remain mined Blocks from sync node
-		bh, err := getData(o, syncNode.FullAdd, cl)
+		bh, err := getData(o.Ch, syncNode.FullAdd, cl)
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -120,6 +104,48 @@ func IBD(o *Objects, cl http.Client) {
 			o.Ch.LastBlock = mb.Block
 
 		}
+	}
+}
+
+// sync with node that has a bigger chain
+func Sync(c *core.Chain, n *core.Node) {
+	if c.ChainHeight >= n.NodeHeight {
+		fmt.Println(".... This Node does not have a better chain")
+		return
+	}
+
+	cl := http.Client{Timeout: 5 * time.Second}
+	// Getting hash of remain mined Blocks from sync node
+	bh, err := getData(c, n.FullAdd, cl)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+
+	// Downloading mined Blocks
+	for i := 0; i < len(bh); i++ {
+		hash := bh[blockIndex(c.LastBlock.BH.BlockIndex+1)]
+
+		mb := getBlock(hash, core.NodeID(c.MinerAdd), n.FullAdd, cl)
+		if reflect.DeepEqual(mb, new(core.MsgBlock)) {
+			break
+		}
+		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
+
+		// check if block is valid
+		if !c.BlockValidator(*mb.Block) {
+			fmt.Printf("... Block %x is not valid\n", mb.Block.BH.BlockHash)
+			break
+
+		}
+		fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
+		c.AddBlockInDB(mb.Block)
+		c.SyncUtxoSet()
+
+		c.LastBlock = mb.Block
+
+	}
+	if c.ChainHeight == n.NodeHeight {
+		fmt.Println(".....  Nodes Synced Now!  .....")
 	}
 }
 
@@ -177,9 +203,9 @@ func getGen(syncNode string, cl http.Client) *core.Block {
 
 }
 
-func getData(c *Objects, syncAddress string, cl http.Client) (map[blockIndex][]byte, error) {
+func getData(c *core.Chain, syncAddress string, cl http.Client) (map[blockIndex][]byte, error) {
 
-	data := GetData{c.Ch.LastBlock.BH.BlockHash}
+	data := GetData{c.LastBlock.BH.BlockHash}
 	b, err := json.Marshal(data)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -295,6 +321,87 @@ Out:
 			break
 		}
 
+	}
+
+	return nil
+}
+
+// Check if two nodes have same genesis block or not
+// only if nodes have same genesis block can pair
+// and return genesis block and a boolean
+func IsInSameNet(genesis_hash []byte, node *core.Node) (*core.Block, bool) {
+	gen_block := getGen(node.FullAdd, http.Client{Timeout: 5 * time.Second})
+	return gen_block, bytes.Equal(gen_block.BH.BlockHash, genesis_hash)
+}
+
+func NodeInfo(dst string, cl http.Client) (*core.Node, error) {
+
+	node := &core.Node{}
+	resp, err := cl.Get(fmt.Sprintf("%s/nodeinfo", dst))
+	if err != nil {
+		return node, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return node, err
+	}
+	err = json.Unmarshal(body, node)
+	if err != nil {
+		return node, err
+	}
+	node.FullAdd = dst
+	return node, nil
+
+}
+
+// this function pair two node in same network and download genesis block if it's needed
+func PairNode(c *core.Chain, dst string) error {
+
+	cl := http.Client{Timeout: 5 * time.Second}
+	node, err := NodeInfo(dst, cl)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	if c.ChainHeight >= 1 {
+		hash, err := c.DB.DB.Get([]byte("genesis_block"), nil)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		if _, ok := IsInSameNet(hash, node); !ok {
+			log.Fatalf(`This two nodes don't have same Genesis Block\n
+		If You want to connect to this network delete database "%s" and try again... `, c.DBPath)
+		}
+		// Nodes have same Genesis Block
+		// so cane be paired
+		c.KnownNodes[node.NodeId] = node
+		fmt.Printf("...Node %s with address %s added to KnownNodes\n", node.NodeId, node.FullAdd)
+
+		err = ShareNode(c, dst, cl)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Downloading genesis block
+	block := getGen(node.FullAdd, cl)
+
+	c.LastBlock = block
+	c.ChainHeight++
+
+	// Updating UTXO Set base on genesis block transaction
+	c.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
+	// Save Genesis block in database
+	err = core.SaveGenInDB(*block, &c.DB)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("Genesis Block added to database\n")
+
+	err = ShareNode(c, dst, cl)
+	if err != nil {
+		return err
 	}
 
 	return nil

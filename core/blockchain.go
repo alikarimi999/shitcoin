@@ -9,6 +9,10 @@ import (
 	"github.com/alikarimi999/shitcoin/database"
 )
 
+const (
+	BlockMaxTransactions = 4
+)
+
 type Chain struct {
 	ChainId     Chainid
 	ChainHeight uint64
@@ -66,7 +70,7 @@ func (c *Chain) Miner() {
 	fmt.Println("Miner Function start!")
 	cl := http.Client{Timeout: 5 * time.Second}
 	for {
-		if len(c.MemPool.Transactions) >= 3 {
+		if len(c.MemPool.Transactions) >= BlockMaxTransactions-1 {
 			if Mine(c, 20) {
 				// Broadcasting Mined block in network
 				mb := NewMsgdBlock(c.LastBlock, NodeID(c.MinerAdd), c.MinerAdd)
@@ -76,6 +80,7 @@ func (c *Chain) Miner() {
 		}
 		time.Sleep(5 * time.Second)
 	}
+
 }
 
 func (c *Chain) NewNode() *Node {

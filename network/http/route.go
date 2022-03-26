@@ -21,8 +21,8 @@ type Objects struct {
 func RunServer(c *core.Chain, port int) {
 
 	o := Objects{c, port}
-	go o.Ch.Miner()
 	e := echo.New()
+
 	e.GET("/getutxo", o.sendUtxoset)
 	e.POST("sendtrx", o.getTrx)
 	e.GET("/getgen", o.SendGen)
@@ -30,7 +30,18 @@ func RunServer(c *core.Chain, port int) {
 	e.POST("/getblock", o.SendBlock)
 	e.POST("/minedblock", o.MinedBlock)
 	e.POST("/getnode", o.SendNodes)
+	e.GET("nodeinfo", o.SendNodeInfo)
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
+}
+
+func (o *Objects) SendNodeInfo(ctx echo.Context) error {
+	node := o.Ch.NewNode()
+	err := ctx.Bind(node)
+	if err != nil {
+		return err
+	}
+	ctx.JSONPretty(200, node, " ")
+	return nil
 }
 
 func (o *Objects) SendNodes(ctx echo.Context) error {
@@ -55,6 +66,11 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 		if _, ok := o.Ch.KnownNodes[n.NodeId]; !ok {
 			o.Ch.KnownNodes[n.NodeId] = n
 			fmt.Printf("...Add Node %s with address %s to KnownNodes\n", n.NodeId, n.FullAdd)
+			if o.Ch.ChainHeight < n.NodeHeight {
+				fmt.Printf("... Node %s had %d mined block more\n", n.NodeId, n.NodeHeight-o.Ch.ChainHeight)
+				fmt.Printf("... Trying to sync with Node %s\n", n.NodeId)
+				Sync(o.Ch, n)
+			}
 		}
 	}
 
@@ -115,6 +131,10 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 		o.Ch.LastBlock = mb.Block
 		o.Ch.ChainHeight++
+
+		// Update NodeHeight of sender in KnownNodes
+		o.Ch.KnownNodes[mb.Sender].NodeHeight++
+
 		// Broadcasting valid new Mined block in network
 		o.Ch.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
 

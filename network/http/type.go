@@ -23,7 +23,7 @@ type GetNode struct {
 }
 
 type GetData struct {
-	// last block hash that nodes hash
+	// last block hash that nodes has
 	// nil mean does not have even genesis block
 	// sync node return inv struct which contain hash of all block that it's have
 	LastHash []byte

@@ -113,16 +113,16 @@ func (c *Chain) AddBlockInDB(b *Block) {
 	// Saving valid block in database
 	err := saveBlockInDB(*b, &c.DB)
 	if err != nil {
-		log.Fatalf("Block %x did not add to database\n\n", b.BH.BlockHash)
+		log.Fatalf("... Block %x did not add to database\n\n", b.BH.BlockHash)
 	}
-	fmt.Printf("Block %d with hash %x successfully added to database\n\n", b.BH.BlockIndex, b.BH.BlockHash)
+	fmt.Printf("... Block %d with hash %x successfully added to database\n\n", b.BH.BlockIndex, b.BH.BlockHash)
 
 }
 
 // this function check validation of block that mined by another node
 func (c *Chain) BlockValidator(b Block) bool {
 
-	if b.BH.BlockIndex-1 == c.LastBlock.BH.BlockIndex && b.Validate_hash() {
+	if b.BH.BlockIndex-1 == c.LastBlock.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, c.LastBlock.BH.BlockHash) && b.Validate_hash() {
 
 		if utxos, valid := c.Validate_transactions(b); valid {
 			c.MemPool.Chainstate.Utxos = utxos
@@ -143,9 +143,9 @@ func (b *Block) Validate_hash() bool {
 
 	result := bytes.Equal(hash, real_hash)
 	if result {
-		fmt.Println(" Block hash is valid")
+		fmt.Println("... Block hash is valid")
 	} else {
-		fmt.Println(" Block hash is not valid")
+		fmt.Println("... Block hash is not valid")
 
 	}
 	return result
