@@ -2,10 +2,12 @@ package network
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/database"
 	"github.com/labstack/echo/v4"
 )
 
@@ -60,17 +62,18 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 	gn.ShareNodes = sendNode(o.Ch, gn.SrcNodes, senderID)
 
 	for _, n := range gn.SrcNodes {
-		if len(o.Ch.KnownNodes) >= 8 {
+		if len(o.Ch.KnownNodes) >= MaxKnownNodes {
 			break
 		}
-		if _, ok := o.Ch.KnownNodes[n.NodeId]; !ok {
+		if _, ok := o.Ch.KnownNodes[n.NodeId]; !ok && n.NodeId != core.NodeID(o.Ch.MinerAdd) {
 			o.Ch.KnownNodes[n.NodeId] = n
 			fmt.Printf("...Add Node %s with address %s to KnownNodes\n", n.NodeId, n.FullAdd)
-			if o.Ch.ChainHeight < n.NodeHeight {
-				fmt.Printf("... Node %s had %d mined block more\n", n.NodeId, n.NodeHeight-o.Ch.ChainHeight)
-				fmt.Printf("... Trying to sync with Node %s\n", n.NodeId)
-				Sync(o.Ch, n)
-			}
+		}
+
+		if o.Ch.ChainHeight < n.NodeHeight {
+			fmt.Printf("... Node %s had %d mined block more\n", n.NodeId, n.NodeHeight-o.Ch.ChainHeight)
+			fmt.Printf("... Trying to sync with Node %s\n", n.NodeId)
+			Sync(o.Ch, n)
 		}
 	}
 
@@ -114,16 +117,26 @@ Out:
 }
 
 func (o *Objects) MinedBlock(ctx echo.Context) error {
+
+	o.Ch.Chainstate.Loadchainstate()
+	defer func() { o.Ch.Chainstate.Utxos = make(map[core.Account][]*core.UTXO) }()
+
 	mb := new(core.MsgBlock)
 	err := ctx.Bind(mb)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("Block: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
+
+	// Choose block that mined first
+	if ChooseBlock(o.Ch, mb) {
+		return nil
+	}
 
 	if mb.Block.BH.BlockIndex-1 == o.Ch.LastBlock.BH.BlockIndex {
 		fmt.Println("  Proccessing Block")
-		if !o.Ch.BlockValidator(*mb.Block) {
+		if !o.Ch.BlockValidator(*mb.Block, o.Ch.Chainstate) {
 			fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 			return fmt.Errorf("block %x is not valid", mb.Block.BH.BlockHash)
 
@@ -139,6 +152,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		o.Ch.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
 
 		o.Ch.AddBlockInDB(mb.Block)
+		SaveBlocksenderInDB(mb.Block.BH.BlockHash, mb.Sender, o.Ch.Chainstate.DB)
 		o.Ch.SyncUtxoSet()
 
 	}
@@ -146,6 +160,16 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 	return nil
 }
 
+// save block sender in chainstate database
+func SaveBlocksenderInDB(hash []byte, sender core.NodeID, d database.Database) error {
+
+	err := d.DB.Put(hash, []byte(sender), nil)
+	if err != nil {
+		return err
+	}
+	log.Printf("Block: %x with sender %s saved in database\n", hash, sender)
+	return nil
+}
 func (o *Objects) SendBlock(ctx echo.Context) error {
 	gb := new(GetBlock)
 	err := ctx.Bind(gb)

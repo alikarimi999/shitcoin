@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"time"
 )
 
 type ProofOfWork struct {
@@ -28,13 +29,13 @@ func Mine(c *Chain, amount int) bool {
 	b.BH.BlockIndex = c.ChainHeight
 	b.BH.PrevHash = c.LastBlock.BH.BlockHash
 	pow := NewProofOfWork(10, b)
-
+	pow.block.BH.Timestamp = time.Now().UnixNano()
 	_, err := pow.POW()
 	if err != nil {
 		fmt.Println("Finding nonce was unsuccesfl!!!")
 		return false
 	}
-	fmt.Printf("Block %d mined with Hash: %x By %s\n", b.BH.BlockIndex, b.BH.BlockHash, b.BH.Miner)
+	fmt.Printf("Block %d mined with Hash: %x By %s At %d moment\n", b.BH.BlockIndex, b.BH.BlockHash, b.BH.Miner, b.BH.Timestamp)
 	c.ChainHeight++
 	c.LastBlock = b
 	err = saveBlockInDB(*b, &c.DB)

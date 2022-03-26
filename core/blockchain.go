@@ -55,7 +55,8 @@ func NewChain(path string, port int) (*Chain, error) {
 		Port:       port,
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
-	c.MemPool.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
+	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
+	c.MemPool.Chainstate.DB = c.Chainstate.DB
 	return c, nil
 }
 

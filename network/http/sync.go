@@ -92,7 +92,7 @@ func IBD(o *Objects, cl http.Client) {
 			fmt.Printf("Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 			// check if block is valid
-			if !o.Ch.BlockValidator(*mb.Block) {
+			if !o.Ch.BlockValidator(*mb.Block, o.Ch.MemPool.Chainstate) {
 				fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 				break
 
@@ -132,7 +132,7 @@ func Sync(c *core.Chain, n *core.Node) {
 		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 		// check if block is valid
-		if !c.BlockValidator(*mb.Block) {
+		if !c.BlockValidator(*mb.Block, c.MemPool.Chainstate) {
 			fmt.Printf("... Block %x is not valid\n", mb.Block.BH.BlockHash)
 			break
 
@@ -399,10 +399,79 @@ func PairNode(c *core.Chain, dst string) error {
 	}
 	fmt.Printf("Genesis Block added to database\n")
 
+	c.SyncUtxoSet()
+
 	err = ShareNode(c, dst, cl)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// Broadcast received transaction to Known Nodes
+func BroadTrx(c *core.Chain, t core.Transaction) {
+	cl := http.Client{Timeout: 5 * time.Second}
+	b, err := json.Marshal(t)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	for _, n := range c.KnownNodes {
+		log.Printf("Sending Transaction %x to Node %s\n", t.TxID, n.NodeId)
+		cl.Post(fmt.Sprintf("%s/sendtrx", n.FullAdd), "application/json", bytes.NewReader(b))
+	}
+}
+
+// this function Handle situations that node recieve two block with diffrent miner an same index number
+// Timestamp is a Tiebreaker
+func ChooseBlock(c *core.Chain, mb *core.MsgBlock) bool {
+
+	if mb.Block.BH.BlockIndex == c.LastBlock.BH.BlockIndex && !bytes.Equal(mb.Block.BH.BlockHash, c.LastBlock.BH.BlockHash) &&
+		bytes.Equal(mb.Block.BH.PrevHash, c.LastBlock.BH.PrevHash) && mb.Block.BH.Timestamp < c.LastBlock.BH.Timestamp &&
+		!bytes.Equal(mb.Block.BH.Miner, c.LastBlock.BH.Miner) {
+
+		fmt.Println("Code >>>")
+
+		log.Printf("Block %x mined sooner\n", mb.Block.BH.BlockHash)
+		log.Printf("Loading Previous Chainstate from database in memory for validating Block %x\n", mb.Block.BH.BlockHash)
+
+		if !c.BlockValidator(*mb.Block, c.Chainstate) {
+			log.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
+		}
+		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
+
+		// delete current last block from database
+		err := c.DB.DB.Delete(c.LastBlock.BH.BlockHash, nil)
+		if err != nil {
+			log.Println(err.Error())
+			return false
+		}
+		c.LastBlock = mb.Block
+
+		// Update NodeHeight of sender in KnownNodes
+		c.KnownNodes[mb.Sender].NodeHeight++
+
+		// Update previous block's sender nodeheight
+		sender, err := c.Chainstate.DB.DB.Get(c.LastBlock.BH.BlockHash, nil)
+		if err != nil {
+			log.Println(err.Error())
+			return false
+		}
+		c.KnownNodes[core.NodeID(sender)].NodeHeight--
+
+		// back current Chain State to Previous one
+		c.MemPool.Chainstate.Utxos = c.Chainstate.Utxos
+
+		// Broadcasting valid new Mined block in network
+		c.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
+
+		c.AddBlockInDB(mb.Block)
+		SaveBlocksenderInDB(mb.Block.BH.BlockHash, mb.Sender, c.Chainstate.DB)
+		c.SyncUtxoSet()
+
+		return true
+	}
+
+	return false
 }

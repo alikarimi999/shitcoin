@@ -120,17 +120,15 @@ func (c *Chain) AddBlockInDB(b *Block) {
 }
 
 // this function check validation of block that mined by another node
-func (c *Chain) BlockValidator(b Block) bool {
-
+func (c *Chain) BlockValidator(b Block, ch *ChainState) bool {
 	if b.BH.BlockIndex-1 == c.LastBlock.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, c.LastBlock.BH.BlockHash) && b.Validate_hash() {
 
-		if utxos, valid := c.Validate_transactions(b); valid {
-			c.MemPool.Chainstate.Utxos = utxos
-		} else {
-			return false
+		if utxos, valid := c.Validate_transactions(b, ch); valid {
+			ch.Utxos = utxos
+			return true
 		}
 
-		return true
+		return false
 	}
 	return false
 }
@@ -154,11 +152,11 @@ func (b *Block) Validate_hash() bool {
 
 // validate block's transactions
 // and if transaction is valid update in memory UTXO set
-func (c *Chain) Validate_transactions(b Block) (map[Account][]*UTXO, bool) {
+func (c *Chain) Validate_transactions(b Block, ch *ChainState) (map[Account][]*UTXO, bool) {
 
 	tempChainstate := &ChainState{}
 	tempChainstate.Utxos = make(map[Account][]*UTXO)
-	tempChainstate.Utxos = c.MemPool.Chainstate.Utxos
+	tempChainstate.Utxos = ch.Utxos
 
 	for _, tx := range b.Transactions {
 
@@ -169,6 +167,7 @@ func (c *Chain) Validate_transactions(b Block) (map[Account][]*UTXO, bool) {
 		}
 		trx := *tx
 		if !tempChainstate.Verifyhash(tx) || !trx.Checksig() {
+
 			return nil, false
 		}
 		tempChainstate.UpdateUtxoSet(tx)

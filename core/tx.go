@@ -38,6 +38,12 @@ type TxIn struct {
 // adding transaction to transaction Pool
 func (c *Chain) AddTx2Pool(tx *Transaction) error {
 
+	for _, t := range c.MemPool.Transactions {
+		if bytes.Equal(t.TxID, tx.TxID) {
+			return fmt.Errorf("transaction %x exist in %s Mem Pool", tx.TxID, NodeID(c.MinerAdd))
+		}
+	}
+
 	trx := *tx
 
 	if c.MemPool.Chainstate.Verifyhash(tx) && trx.Checksig() {

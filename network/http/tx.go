@@ -7,8 +7,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func (h *Objects) getTrx(ctx echo.Context) error {
-	c := h.Ch
+func (o *Objects) getTrx(ctx echo.Context) error {
+	c := o.Ch
 	var t core.Transaction
 	err := ctx.Bind(&t)
 
@@ -20,13 +20,17 @@ func (h *Objects) getTrx(ctx echo.Context) error {
 	if err != nil {
 		return ctx.String(200, err.Error())
 	}
+
+	// Broadcast transaction
+	BroadTrx(o.Ch, t)
+
 	return ctx.String(200, "Transaction added to MemPool")
 }
 
-func (h *Objects) sendUtxoset(ctx echo.Context) error {
+func (o *Objects) sendUtxoset(ctx echo.Context) error {
 
 	account := ctx.QueryParam("account")
-	msg := sendUtxoset(h.Ch, core.Account(account))
+	msg := sendUtxoset(o.Ch, core.Account(account))
 
 	ctx.JSONPretty(200, msg, "  ")
 	return nil

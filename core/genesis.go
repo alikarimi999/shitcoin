@@ -34,9 +34,9 @@ func (c *Chain) creatGenesis(to Address, amount float64) error {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	fmt.Printf("Genesis Block added to database\n")
 	c.ChainHeight++
+	fmt.Printf("Genesis Block added to database\n")
+	c.SyncUtxoSet()
 	return nil
 
 }
