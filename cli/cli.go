@@ -99,10 +99,11 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	c := core.Loadchain(dbPath, port)
 	c.MinerAdd = miner
 
-	err := network.ShareNode(c, node, 8, cl)
+	err := network.ShareNode(c, node, cl)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+
 	network.IBD(&network.Objects{Ch: c}, cl)
 	network.RunServer(c, port)
 }

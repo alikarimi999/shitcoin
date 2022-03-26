@@ -9,6 +9,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+const (
+	NETWORKPROTO string = "http://"
+)
+
 type Objects struct {
 	Ch   *core.Chain
 	Port int
@@ -37,7 +41,7 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 		return err
 	}
 
-	sender := ctx.RealIP() + gn.SrcNodes[0].Port
+	sender := NETWORKPROTO + ctx.RealIP() + gn.SrcNodes[0].Port
 	senderID := gn.SrcNodes[0].NodeId
 	gn.SrcNodes[0].FullAdd = sender
 	fmt.Printf("Node %s with Address %s Requesitng new node\n", gn.SrcNodes[0].NodeId, gn.SrcNodes[0].FullAdd)
@@ -79,7 +83,7 @@ Out:
 		// dont share node if applicant node already has it
 		for _, n := range src {
 			if node.NodeId == n.NodeId {
-				fmt.Printf("....Dont send Node %s with Address %s to Node %s\n", n.NodeId, n.FullAdd, sender)
+				fmt.Printf("... Node %s already has this Node %s with address %s so don't send it\n", sender, n.NodeId, n.FullAdd)
 				continue Out
 			}
 		}

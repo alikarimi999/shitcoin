@@ -13,6 +13,40 @@ import (
 	"github.com/alikarimi999/shitcoin/core"
 )
 
+const (
+	MaxKnownNodes int = 8
+	MaxNodesQueue
+)
+
+type NodesQueue struct {
+	nodes chan *core.Node
+}
+
+func NewNodesQueue(size int) *NodesQueue {
+	return &NodesQueue{
+		nodes: make(chan *core.Node, size),
+	}
+}
+
+func (n *NodesQueue) Push(node *core.Node) {
+	select {
+	case n.nodes <- node:
+	default:
+		// todo: right this shit
+		fmt.Println("Nodes Queue is full")
+	}
+}
+
+func (n *NodesQueue) Pop() *core.Node {
+	select {
+	case node := <-n.nodes:
+		return node
+	default:
+		fmt.Println("There is not any other node for requesting new node ")
+		return &core.Node{}
+	}
+}
+
 // Initial block download refers to the process where nodes synchronize themselves to the network
 //by downloading blocks that are new to them
 func IBD(o *Objects, cl http.Client) {
@@ -209,17 +243,17 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*core.Node {
 	return gn.ShareNodes
 }
 
-func ShareNode(c *core.Chain, dst string, max int, cl http.Client) error {
+// This function help to obtain some node addresses of network and add these KnownNodes
+func ShareNode(c *core.Chain, dst string, cl http.Client) error {
 
 	// nodes that we didn't ask to share their nodes with us yet
-	u_nodes := []*core.Node{}
+	nq := NewNodesQueue(MaxNodesQueue)
 
 Out:
-	for i := 0; i <= max; i++ {
-
+	for i := 0; i <= MaxKnownNodes; i++ {
 		fmt.Printf("Requesting New Nodes from Node Address %s\n", dst)
 
-		if len(c.KnownNodes) >= max {
+		if len(c.KnownNodes) >= MaxKnownNodes {
 			return fmt.Errorf("...this node has enough known node")
 		}
 		share_nodes := GetNewNodes(c, dst, cl)
@@ -232,7 +266,7 @@ Out:
 
 			fmt.Printf("...This Node %s Recieved from %s\n", n.NodeId, dst)
 
-			if len(c.KnownNodes) >= max {
+			if len(c.KnownNodes) >= MaxKnownNodes {
 				break Out
 			}
 
@@ -250,19 +284,17 @@ Out:
 
 			// dont send getnode to previous destination node again
 			if n.FullAdd != dst {
-				u_nodes = append(u_nodes, n)
+				nq.Push(n)
 			}
-
 		}
 
 		// get new nodes from nodes that sends by previous nodes
-		if len(u_nodes) == 0 {
-			fmt.Println("There is not any other node for requesting new node ")
-			return nil
+
+		dst = nq.Pop().FullAdd
+		if dst == "" {
+			break
 		}
-		dst = u_nodes[i].FullAdd
-		// delet this node from list
-		u_nodes = append(u_nodes[:i], u_nodes[i+1:]...)
+
 	}
 
 	return nil
