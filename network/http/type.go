@@ -17,6 +17,12 @@ type msgUTXOSet struct {
 	Utxos   []core.UTXO  `json:"utxos"`
 }
 
+type MsgBlock struct {
+	Sender core.NodeID
+	Block  *core.Block
+	Miner  core.Address
+}
+
 type GetNode struct {
 	SrcNodes   []*core.Node
 	ShareNodes []*core.Node
@@ -45,4 +51,13 @@ type Inv struct {
 
 	// a map contain block index and block hash
 	BlocksHash map[blockIndex][]byte
+}
+
+func NewMsgdBlock(b *core.Block, sender core.NodeID, miner core.Address) *MsgBlock {
+	mb := &MsgBlock{
+		Sender: sender,
+		Block:  b,
+		Miner:  miner,
+	}
+	return mb
 }

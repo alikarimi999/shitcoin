@@ -25,7 +25,7 @@ func (c *Chain) creatGenesis(to Address, amount float64) error {
 	genesis_block.BH.BlockHash = genesis_block.Hash()
 
 	c.Blocks = append(c.Blocks, genesis_block)
-	c.LastBlock = genesis_block
+	c.LastBlock = *genesis_block
 
 	// we temprory add genesis output to mempool utxo set
 	c.MemPool.Chainstate.UpdateUtxoSet(genesis_block.Transactions[0])
@@ -43,7 +43,7 @@ func (c *Chain) creatGenesis(to Address, amount float64) error {
 
 func SaveGenInDB(b Block, d *database.Database) error {
 
-	err := saveBlockInDB(b, d)
+	err := b.SaveBlockInDB(d)
 	if err != nil {
 		log.Fatalln(err)
 	}

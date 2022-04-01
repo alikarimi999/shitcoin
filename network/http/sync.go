@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
@@ -50,8 +51,9 @@ func (n *NodesQueue) Pop() *core.Node {
 
 // Initial block download refers to the process where nodes synchronize themselves to the network
 //by downloading blocks that are new to them
-func IBD(o *Objects, cl http.Client) {
+func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
 
+	defer wg.Done()
 	// sync node is node with best chain
 	syncNode := &core.Node{}
 
@@ -86,13 +88,13 @@ func IBD(o *Objects, cl http.Client) {
 			hash := bh[blockIndex(o.Ch.LastBlock.BH.BlockIndex+1)]
 
 			mb := getBlock(hash, core.NodeID(o.Ch.MinerAdd), syncNode.FullAdd, cl)
-			if reflect.DeepEqual(mb, new(core.MsgBlock)) {
+			if reflect.DeepEqual(mb, new(MsgBlock)) {
 				break
 			}
 			fmt.Printf("Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 			// check if block is valid
-			if !o.Ch.BlockValidator(*mb.Block, o.Ch.MemPool.Chainstate) {
+			if BlockValidator(*mb.Block, o.Ch.MemPool.Chainstate, o.Ch.LastBlock) {
 				fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 				break
 
@@ -101,7 +103,7 @@ func IBD(o *Objects, cl http.Client) {
 			o.Ch.AddBlockInDB(mb.Block)
 			o.Ch.SyncUtxoSet()
 
-			o.Ch.LastBlock = mb.Block
+			o.Ch.LastBlock = *mb.Block
 
 		}
 	}
@@ -126,13 +128,13 @@ func Sync(c *core.Chain, n *core.Node) {
 		hash := bh[blockIndex(c.LastBlock.BH.BlockIndex+1)]
 
 		mb := getBlock(hash, core.NodeID(c.MinerAdd), n.FullAdd, cl)
-		if reflect.DeepEqual(mb, new(core.MsgBlock)) {
+		if reflect.DeepEqual(mb, new(MsgBlock)) {
 			break
 		}
 		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 		// check if block is valid
-		if !c.BlockValidator(*mb.Block, c.MemPool.Chainstate) {
+		if BlockValidator(*mb.Block, c.MemPool.Chainstate, c.LastBlock) {
 			fmt.Printf("... Block %x is not valid\n", mb.Block.BH.BlockHash)
 			break
 
@@ -141,7 +143,7 @@ func Sync(c *core.Chain, n *core.Node) {
 		c.AddBlockInDB(mb.Block)
 		c.SyncUtxoSet()
 
-		c.LastBlock = mb.Block
+		c.LastBlock = *mb.Block
 
 	}
 	if c.ChainHeight == n.NodeHeight {
@@ -149,9 +151,9 @@ func Sync(c *core.Chain, n *core.Node) {
 	}
 }
 
-func getBlock(hash []byte, nid core.NodeID, syncAddress string, cl http.Client) *core.MsgBlock {
+func getBlock(hash []byte, nid core.NodeID, syncAddress string, cl http.Client) *MsgBlock {
 	data := GetBlock{nid, hash}
-	mb := new(core.MsgBlock)
+	mb := new(MsgBlock)
 
 	msg, err := json.Marshal(data)
 	if err != nil {
@@ -387,7 +389,7 @@ func PairNode(c *core.Chain, dst string) error {
 	// Downloading genesis block
 	block := getGen(node.FullAdd, cl)
 
-	c.LastBlock = block
+	c.LastBlock = *block
 	c.ChainHeight++
 
 	// Updating UTXO Set base on genesis block transaction
@@ -423,55 +425,53 @@ func BroadTrx(c *core.Chain, t core.Transaction) {
 	}
 }
 
-// this function Handle situations that node recieve two block with diffrent miner an same index number
-// Timestamp is a Tiebreaker
-func ChooseBlock(c *core.Chain, mb *core.MsgBlock) bool {
+// This function Broadcast a new mined block in network
+func (o *Objects) BroadMinedBlock() {
 
-	if mb.Block.BH.BlockIndex == c.LastBlock.BH.BlockIndex && !bytes.Equal(mb.Block.BH.BlockHash, c.LastBlock.BH.BlockHash) &&
-		bytes.Equal(mb.Block.BH.PrevHash, c.LastBlock.BH.PrevHash) && mb.Block.BH.Timestamp < c.LastBlock.BH.Timestamp &&
-		!bytes.Equal(mb.Block.BH.Miner, c.LastBlock.BH.Miner) {
-
-		fmt.Println("Code >>>")
-
-		log.Printf("Block %x mined sooner\n", mb.Block.BH.BlockHash)
-		log.Printf("Loading Previous Chainstate from database in memory for validating Block %x\n", mb.Block.BH.BlockHash)
-
-		if !c.BlockValidator(*mb.Block, c.Chainstate) {
-			log.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
+	for {
+		// Sender is Miner function
+		block := <-o.Ch.MinedBlock
+		mb := MsgBlock{
+			Sender: core.NodeID(o.Ch.MinerAdd),
+			Block:  block,
+			Miner:  o.Ch.MinerAdd,
 		}
-		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		// delete current last block from database
-		err := c.DB.DB.Delete(c.LastBlock.BH.BlockHash, nil)
-		if err != nil {
-			log.Println(err.Error())
-			return false
+		for _, node := range o.Ch.KnownNodes {
+			// dont send to miner of block or sender
+			if mb.Sender == node.NodeId || core.NodeID(mb.Miner) == node.NodeId {
+				continue
+			}
+
+			b, _ := json.Marshal(mb)
+			log.Printf("Sending New Mined block %d: %x to %s\n", block.BH.BlockIndex, block.BH.BlockHash, node.NodeId)
+			o.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
 		}
-		c.LastBlock = mb.Block
-
-		// Update NodeHeight of sender in KnownNodes
-		c.KnownNodes[mb.Sender].NodeHeight++
-
-		// Update previous block's sender nodeheight
-		sender, err := c.Chainstate.DB.DB.Get(c.LastBlock.BH.BlockHash, nil)
-		if err != nil {
-			log.Println(err.Error())
-			return false
-		}
-		c.KnownNodes[core.NodeID(sender)].NodeHeight--
-
-		// back current Chain State to Previous one
-		c.MemPool.Chainstate.Utxos = c.Chainstate.Utxos
-
-		// Broadcasting valid new Mined block in network
-		c.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
-
-		c.AddBlockInDB(mb.Block)
-		SaveBlocksenderInDB(mb.Block.BH.BlockHash, mb.Sender, c.Chainstate.DB)
-		c.SyncUtxoSet()
-
-		return true
 	}
+}
 
-	return false
+func (o *Objects) BroadBlock() {
+
+	for {
+		// Sender is MinedBlock function
+		mb := <-o.BroadChan
+
+		for _, node := range o.Ch.KnownNodes {
+			// dont send to miner of block or sender
+			if mb.Sender == node.NodeId || core.NodeID(mb.Miner) == node.NodeId {
+				continue
+			}
+
+			prev_sender := mb.Sender
+
+			// Set new sender
+			mb.Sender = core.NodeID(o.Ch.MinerAdd)
+
+			b, _ := json.Marshal(mb)
+			fmt.Printf("Sending block %d: %x to %s which recieved from %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, node.NodeId, prev_sender)
+			o.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
+
+		}
+
+	}
 }

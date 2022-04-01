@@ -16,7 +16,7 @@ func Loadchain(dbPath string, port int) *Chain {
 		return c
 	}
 
-	c.LastBlock = block
+	c.LastBlock = *block
 	c.ChainHeight = c.LastBlock.BH.BlockIndex + 1
 	fmt.Printf("ChainHeight is %d\nlast block index: %d\n", c.ChainHeight, c.LastBlock.BH.BlockIndex)
 

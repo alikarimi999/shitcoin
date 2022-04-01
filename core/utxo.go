@@ -5,6 +5,12 @@ import (
 	"log"
 )
 
+type UTXO struct {
+	Txid  []byte
+	Index uint
+	Txout *TxOut
+}
+
 func (c *Chain) SyncUtxoSet() error {
 
 	saveUTXOsInDB(*c.MemPool.Chainstate)

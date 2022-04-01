@@ -16,13 +16,24 @@ const (
 )
 
 type Objects struct {
-	Ch   *core.Chain
-	Port int
+	Ch        *core.Chain
+	Port      int
+	BroadChan chan *MsgBlock
+	Cl        http.Client
 }
 
 func RunServer(c *core.Chain, port int) {
 
-	o := Objects{c, port}
+	o := Objects{
+		Ch:        c,
+		Port:      port,
+		BroadChan: make(chan *MsgBlock),
+		Cl:        http.Client{Timeout: 5 * time.Second},
+	}
+
+	go o.BroadMinedBlock()
+	go o.BroadBlock()
+
 	e := echo.New()
 
 	e.GET("/getutxo", o.sendUtxoset)
@@ -118,38 +129,42 @@ Out:
 
 func (o *Objects) MinedBlock(ctx echo.Context) error {
 
-	o.Ch.Chainstate.Loadchainstate()
-	defer func() { o.Ch.Chainstate.Utxos = make(map[core.Account][]*core.UTXO) }()
-
-	mb := new(core.MsgBlock)
+	mb := new(MsgBlock)
 	err := ctx.Bind(mb)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Block: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
+	log.Printf("\nBlock: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
 
-	// Choose block that mined first
-	if ChooseBlock(o.Ch, mb) {
-		return nil
+	o.Ch.Mu.Lock()
+	last_block := o.Ch.LastBlock
+	chain_state := o.Ch.MemPool.Chainstate
+	o.Ch.Mu.Unlock()
+
+	if mb.Block.BH.BlockIndex > last_block.BH.BlockIndex+2 {
+		log.Println("Detecting a soft fork")
 	}
 
-	if mb.Block.BH.BlockIndex-1 == o.Ch.LastBlock.BH.BlockIndex {
+	if mb.Block.BH.BlockIndex-1 == last_block.BH.BlockIndex {
 		fmt.Println("  Proccessing Block")
-		if !o.Ch.BlockValidator(*mb.Block, o.Ch.Chainstate) {
+		if BlockValidator(*mb.Block, chain_state, last_block) {
 			fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 			return fmt.Errorf("block %x is not valid", mb.Block.BH.BlockHash)
 
 		}
 		fmt.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
-		o.Ch.LastBlock = mb.Block
-		o.Ch.ChainHeight++
 
+		o.Ch.Mu.Lock()
+		o.Ch.LastBlock = *mb.Block
+		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
 		o.Ch.KnownNodes[mb.Sender].NodeHeight++
+		o.Ch.Mu.Unlock()
 
 		// Broadcasting valid new Mined block in network
-		o.Ch.BroadBlock(mb, http.Client{Timeout: 5 * time.Second})
+		// Reciver is BroadBlock function
+		o.BroadChan <- mb
 
 		o.Ch.AddBlockInDB(mb.Block)
 		SaveBlocksenderInDB(mb.Block.BH.BlockHash, mb.Sender, o.Ch.Chainstate.DB)
@@ -179,7 +194,7 @@ func (o *Objects) SendBlock(ctx echo.Context) error {
 	hash := gb.BlockHash
 
 	block := core.ReadBlock(o.Ch.DB, hash)
-	mb := core.NewMsgdBlock(block, core.NodeID(o.Ch.MinerAdd), block.BH.Miner)
+	mb := NewMsgdBlock(block, core.NodeID(o.Ch.MinerAdd), block.BH.Miner)
 
 	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)
 	ctx.JSONPretty(200, mb, " ")

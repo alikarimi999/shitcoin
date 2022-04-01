@@ -6,14 +6,10 @@ import (
 	"crypto/elliptic"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
 )
-
-type txsPool struct {
-	Transactions []*Transaction
-	Chainstate   *ChainState
-}
 
 type Transaction struct {
 	Timestamp time.Time
@@ -52,7 +48,19 @@ func (c *Chain) AddTx2Pool(tx *Transaction) error {
 		// We have to update mem Pool Utxo set if we add transaction to Poll
 
 		c.MemPool.Chainstate.UpdateUtxoSet(tx)
-		fmt.Println("transaction added")
+		log.Println("transaction added Mem Pool")
+		if len(c.MemPool.Transactions) >= BlockMaxTransactions-1 {
+
+			b := NewBlock()
+			if err := c.MemPool.TransferTxs2Block(b, c.MinerAdd, 15); err != nil {
+				log.Println(err.Error())
+			} else {
+				log.Println("Mem Pool has 3 Transaction")
+				// Reciver is in Miner function
+				c.BlockChann <- b
+				log.Println("Sending block to Mine function through BlockChann")
+			}
+		}
 		return nil
 	}
 	return errors.New("Transaction is not Valid")
@@ -140,51 +148,18 @@ func (tx Transaction) TrimmeTX() *Transaction {
 	return txCopy
 }
 
-// Transfer Transactions from transaction pool to Block
-func (tp *txsPool) TransferTxs2Block(b *Block, amount int) error {
+func (tx *Transaction) SnapShot() *Transaction {
 
-	tp.addMinerReward(b.BH.Miner, amount)
+	trx := &Transaction{}
 
-	b.Transactions = tp.Transactions
-
-	// and make transaction pool Clean
-	tp.Clean()
-
-	return nil
-
-}
-
-func (tp *txsPool) addMinerReward(miner Address, amount int) error {
-	pkh := Add2PKH(miner)
-	reward := CoinbaseTx(pkh, amount)
-	tp.Transactions = append(tp.Transactions, reward)
-
-	tp.Chainstate.UpdateUtxoSet(reward)
-
-	return nil
-}
-
-// Clean transaction pool
-func (tp *txsPool) Clean() error {
-	tp.Transactions = []*Transaction{}
-
-	return nil
-}
-
-func (tx *Transaction) Print() {
-	fmt.Printf("\n\tTX Hash: %x\n\n", tx.TxID)
-
-	fmt.Printf("Inputs: \n\t")
-
-	for i, in := range tx.TxInputs {
-		fmt.Printf("\n Input: %d\n\t %x\n\tAccount: %s\tOutID: %x \n", i, in.OutPoint, Pub2Address(in.PublicKey, false), in.Vout)
-	}
-	fmt.Printf("\n\n")
-	fmt.Printf("Outputs\n")
-
-	for i, out := range tx.TxOutputs {
-		fmt.Printf("Output: %d\tAccount: %s\tValue: %v\n", i, Pub2Address(out.PublicKeyHash, true), out.Value)
-
+	for _, in := range tx.TxInputs {
+		copy_in := *in
+		trx.TxInputs = append(trx.TxInputs, &copy_in)
 	}
 
+	for _, out := range tx.TxOutputs {
+		copy_out := *out
+		trx.TxOutputs = append(trx.TxOutputs, &copy_out)
+	}
+	return trx
 }

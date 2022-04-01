@@ -2,9 +2,8 @@ package core
 
 import (
 	"fmt"
-	"net/http"
 	"path/filepath"
-	"time"
+	"sync"
 
 	"github.com/alikarimi999/shitcoin/database"
 )
@@ -14,33 +13,31 @@ const (
 )
 
 type Chain struct {
+	Mu          sync.Mutex
 	ChainId     Chainid
 	ChainHeight uint64
 	Blocks      []*Block
-	LastBlock   *Block
-	MemPool     *txsPool
+	LastBlock   Block
+	MemPool     *memPool
 	Chainstate  *ChainState
 	DB          database.Database
 	MinerAdd    Address
 	KnownNodes  map[NodeID]*Node
 	DBPath      string
 	Port        int
-}
-
-type MsgBlock struct {
-	Sender NodeID
-	Block  *Block
-	Miner  Address
+	BlockChann  chan *Block
+	MinedBlock  chan *Block
 }
 
 func NewChain(path string, port int) (*Chain, error) {
 	c := &Chain{
+		Mu:          sync.Mutex{},
 		ChainId:     0,
 		ChainHeight: 0,
 		Blocks:      make([]*Block, 0),
-		LastBlock:   NewBlock(),
+		LastBlock:   *NewBlock(),
 
-		MemPool: &txsPool{
+		MemPool: &memPool{
 			Transactions: []*Transaction{},
 			Chainstate: &ChainState{
 				Utxos: make(map[Account][]*UTXO),
@@ -53,6 +50,8 @@ func NewChain(path string, port int) (*Chain, error) {
 		KnownNodes: make(map[NodeID]*Node),
 		DBPath:     path,
 		Port:       port,
+		BlockChann: make(chan *Block),
+		MinedBlock: make(chan *Block),
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
@@ -67,23 +66,6 @@ func (c *Chain) SetupChain(miner Address, amount float64) error {
 	return err
 }
 
-func (c *Chain) Miner() {
-	fmt.Println("Miner Function start!")
-	cl := http.Client{Timeout: 5 * time.Second}
-	for {
-		if len(c.MemPool.Transactions) >= BlockMaxTransactions-1 {
-			if Mine(c, 20) {
-				// Broadcasting Mined block in network
-				mb := NewMsgdBlock(c.LastBlock, NodeID(c.MinerAdd), c.MinerAdd)
-				c.BroadBlock(mb, cl)
-
-			}
-		}
-		time.Sleep(5 * time.Second)
-	}
-
-}
-
 func (c *Chain) NewNode() *Node {
 
 	n := &Node{
@@ -95,4 +77,11 @@ func (c *Chain) NewNode() *Node {
 	}
 
 	return n
+}
+
+func (c *Chain) SnapShot() *Chain {
+	ch := c
+	ch.Chainstate = c.Chainstate.SnapShot()
+	ch.MemPool = c.MemPool.SnapShot()
+	return ch
 }

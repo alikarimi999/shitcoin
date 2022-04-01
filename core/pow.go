@@ -28,6 +28,7 @@ func (pow *ProofOfWork) POW() ([]byte, error) {
 		n++
 
 	}
+	fmt.Println()
 
 	return nil, errors.New(" ")
 }

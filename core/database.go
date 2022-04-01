@@ -45,7 +45,7 @@ func ReadBlock(d database.Database, hash []byte) *Block {
 	return nil
 }
 
-func saveBlockInDB(b Block, d *database.Database) error {
+func (b Block) SaveBlockInDB(d *database.Database) error {
 
 	block := Serialize(b)
 

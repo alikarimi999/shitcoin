@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
@@ -89,7 +90,13 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 	}
 	c.MinerAdd = miner
 
-	network.RunServer(c, port)
+	go network.RunServer(c, port)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go Miner(c, wg)
+
+	wg.Wait()
 }
 
 func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath string) {
@@ -104,8 +111,54 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	go network.IBD(&network.Objects{Ch: c}, cl)
 
-	c.Miner()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go network.IBD(&network.Objects{Ch: c}, cl, wg)
+
+	wg.Add(1)
+	go Miner(c, wg)
+
+	wg.Wait()
+
+}
+
+func Miner(c *core.Chain, wg sync.WaitGroup) {
+	defer wg.Done()
+	fmt.Println("Miner Function start!")
+
+	for {
+
+		// Sender is in AddTx2Pool Function
+		b := <-c.BlockChann
+
+		c.Mu.Lock()
+		b.BH.BlockIndex = c.ChainHeight
+		b.BH.PrevHash = c.LastBlock.BH.BlockHash
+		c.Mu.Unlock()
+
+		b.BH.Miner = c.MinerAdd
+
+		if core.Mine(c, b, 20) {
+
+			// reciver is in BroadMinedBlock function
+			c.MinedBlock <- b
+
+			c.Mu.Lock()
+			c.ChainHeight++
+			c.LastBlock = *b
+			c.Mu.Unlock()
+
+			err := b.SaveBlockInDB(&c.DB)
+			if err != nil {
+				log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
+			}
+			log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
+
+			// Now we have to add utxoset to database
+			c.SyncUtxoSet()
+
+		}
+	}
 
 }

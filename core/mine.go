@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"log"
 	"math/big"
 	"time"
@@ -20,32 +19,18 @@ func NewProofOfWork(d uint64, b *Block) *ProofOfWork {
 
 }
 
-func Mine(c *Chain, amount int) bool {
+func Mine(c *Chain, b *Block, amount int) bool {
 
-	b := NewBlock()
-	b.BH.Miner = c.MinerAdd
+	log.Println("Start Mining")
 
-	c.MemPool.TransferTxs2Block(b, amount)
-	b.BH.BlockIndex = c.ChainHeight
-	b.BH.PrevHash = c.LastBlock.BH.BlockHash
-	pow := NewProofOfWork(10, b)
+	pow := NewProofOfWork(15, b)
 	pow.block.BH.Timestamp = time.Now().UnixNano()
 	_, err := pow.POW()
 	if err != nil {
-		fmt.Println("Finding nonce was unsuccesfl!!!")
+		log.Println("Finding nonce was unsuccesfl!!!")
 		return false
 	}
-	fmt.Printf("Block %d mined with Hash: %x By %s At %d moment\n", b.BH.BlockIndex, b.BH.BlockHash, b.BH.Miner, b.BH.Timestamp)
-	c.ChainHeight++
-	c.LastBlock = b
-	err = saveBlockInDB(*b, &c.DB)
-	if err != nil {
-		log.Fatalf("Block %x did not add to database\n\n", b.BH.BlockHash)
-	}
-	fmt.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
-
-	// Now we have to add utxoset to database
-	c.SyncUtxoSet()
+	log.Printf("Block %d mined with Hash: %x By %s At %d moment\n", b.BH.BlockIndex, b.BH.BlockHash, b.BH.Miner, b.BH.Timestamp)
 
 	return true
 
