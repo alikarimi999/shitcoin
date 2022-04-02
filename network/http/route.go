@@ -139,7 +139,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 
 	o.Ch.Mu.Lock()
 	last_block := o.Ch.LastBlock
-	chain_state := o.Ch.MemPool.Chainstate
+	o.Ch.Chainstate.Loadchainstate()
 	o.Ch.Mu.Unlock()
 
 	if mb.Block.BH.BlockIndex > last_block.BH.BlockIndex+2 {
@@ -148,7 +148,8 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 
 	if mb.Block.BH.BlockIndex-1 == last_block.BH.BlockIndex {
 		fmt.Println("  Proccessing Block")
-		if BlockValidator(*mb.Block, chain_state, last_block) {
+
+		if !BlockValidator(*mb.Block, o.Ch.Chainstate, last_block) {
 			fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 			return fmt.Errorf("block %x is not valid", mb.Block.BH.BlockHash)
 

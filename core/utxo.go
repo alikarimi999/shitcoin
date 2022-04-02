@@ -102,7 +102,7 @@ func (c *Chain) Retrieve_chainstate_on_db() {
 
 }
 
-// this function read chainstate from chainstate databse and add it to in memory Chainstate in MemPool
+// this function read chainstate from chainstate databse and add it to in memory Chainstate
 func (ch *ChainState) Loadchainstate() {
 
 	utxos := make(map[Account][]*UTXO)

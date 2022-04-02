@@ -125,7 +125,7 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 
 func Miner(c *core.Chain, wg sync.WaitGroup) {
 	defer wg.Done()
-	fmt.Println("Miner Function start!")
+	log.Println("Miner Function start!")
 
 	for {
 
