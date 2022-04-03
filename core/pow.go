@@ -7,6 +7,19 @@ import (
 	"math/big"
 )
 
+type ProofOfWork struct {
+	block  *Block
+	target *big.Int
+}
+
+func NewProofOfWork(d uint64, b *Block) *ProofOfWork {
+	target := big.NewInt(1)
+	target.Lsh(target, 256-uint(d))
+	b.BH.Difficulty = d
+	return &ProofOfWork{b, target}
+
+}
+
 func (pow *ProofOfWork) POW() ([]byte, error) {
 
 	var intHash big.Int

@@ -2,22 +2,8 @@ package core
 
 import (
 	"log"
-	"math/big"
 	"time"
 )
-
-type ProofOfWork struct {
-	block  *Block
-	target *big.Int
-}
-
-func NewProofOfWork(d uint64, b *Block) *ProofOfWork {
-	target := big.NewInt(1)
-	target.Lsh(target, 256-uint(d))
-	b.BH.Difficulty = d
-	return &ProofOfWork{b, target}
-
-}
 
 func Mine(c *Chain, b *Block, amount int) bool {
 

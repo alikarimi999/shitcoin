@@ -13,20 +13,21 @@ const (
 )
 
 type Chain struct {
-	Mu          sync.Mutex
-	ChainId     Chainid
-	ChainHeight uint64
-	Blocks      []*Block
-	LastBlock   Block
-	MemPool     *memPool
-	Chainstate  *ChainState
-	DB          database.Database
-	MinerAdd    Address
-	KnownNodes  map[NodeID]*Node
-	DBPath      string
-	Port        int
-	BlockChann  chan *Block
-	MinedBlock  chan *Block
+	Mu                  sync.Mutex
+	ChainId             Chainid
+	ChainHeight         uint64
+	Blocks              []*Block
+	LastBlock           Block
+	MemPool             *memPool
+	Chainstate          *ChainState
+	DB                  database.Database
+	MinerAdd            Address
+	KnownNodes          map[NodeID]*Node
+	DBPath              string
+	Port                int
+	BlockChann          chan *Block
+	MinedBlock          chan *Block
+	FindingNonceStarted bool
 }
 
 func NewChain(path string, port int) (*Chain, error) {
@@ -46,12 +47,13 @@ func NewChain(path string, port int) (*Chain, error) {
 		Chainstate: &ChainState{
 			Utxos: make(map[Account][]*UTXO),
 		},
-		MinerAdd:   nil,
-		KnownNodes: make(map[NodeID]*Node),
-		DBPath:     path,
-		Port:       port,
-		BlockChann: make(chan *Block),
-		MinedBlock: make(chan *Block),
+		MinerAdd:            nil,
+		KnownNodes:          make(map[NodeID]*Node),
+		DBPath:              path,
+		Port:                port,
+		BlockChann:          make(chan *Block),
+		MinedBlock:          make(chan *Block),
+		FindingNonceStarted: false,
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
