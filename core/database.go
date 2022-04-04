@@ -48,6 +48,9 @@ func ReadBlock(d database.Database, hash []byte) *types.Block {
 
 func saveUTXOsInDB(u types.ChainState) error {
 
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+
 	for account, utxos := range u.Utxos {
 		key := []byte(account)
 		value := Serialize(utxos)

@@ -1,6 +1,8 @@
 package network
 
 import (
+	"sync"
+
 	"github.com/alikarimi999/shitcoin/core/types"
 )
 
@@ -18,9 +20,18 @@ type msgUTXOSet struct {
 }
 
 type MsgBlock struct {
+	Mu     *sync.Mutex
 	Sender types.NodeID
 	Block  *types.Block
 	Miner  types.Address
+}
+
+func NewMsgBlock() *MsgBlock {
+	m := &MsgBlock{
+		Mu:    &sync.Mutex{},
+		Block: types.NewBlock(),
+	}
+	return m
 }
 
 type GetNode struct {

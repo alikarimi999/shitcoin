@@ -90,7 +90,15 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 	}
 	c.MinerAdd = miner
 
-	go network.RunServer(c, port)
+	o := &network.Objects{
+		Mu:        sync.Mutex{},
+		Ch:        c,
+		Port:      port,
+		BroadChan: make(chan *network.MsgBlock),
+		Cl:        http.Client{Timeout: 5 * time.Second},
+	}
+
+	go network.RunServer(o, port)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -101,11 +109,17 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 
 func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath string) {
 
-	cl := http.Client{Timeout: 5 * time.Second}
-
 	c := core.Loadchain(dbPath, port)
 	c.MinerAdd = miner
-	go network.RunServer(c, port)
+	o := &network.Objects{
+		Mu:        sync.Mutex{},
+		Ch:        c,
+		Port:      port,
+		BroadChan: make(chan *network.MsgBlock),
+		Cl:        http.Client{Timeout: 5 * time.Second},
+	}
+
+	go network.RunServer(o, port)
 
 	err := network.PairNode(c, node)
 	if err != nil {
@@ -113,8 +127,9 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	}
 
 	var wg sync.WaitGroup
+
 	wg.Add(1)
-	go network.IBD(&network.Objects{Ch: c}, cl, wg)
+	go o.IBD(wg)
 
 	wg.Add(1)
 	go Miner(c, wg)
@@ -131,7 +146,6 @@ func Miner(c *core.Chain, wg sync.WaitGroup) {
 
 		// Sender is in AddTx2Pool Function
 		b := <-c.BlockChann
-
 		c.Mu.Lock()
 		b.BH.BlockIndex = c.ChainHeight
 		b.BH.PrevHash = c.LastBlock.BH.BlockHash
@@ -140,17 +154,17 @@ func Miner(c *core.Chain, wg sync.WaitGroup) {
 		b.BH.Miner = c.MinerAdd
 
 		if c.Engine.Start(b) {
-			c.Engine.Close()
+			log.Printf("Block %d with hash %x Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash)
 
 			// reciver is in BroadMinedBlock function
-			c.MinedBlock <- b
+			c.MinedBlock <- b.SnapShot()
 
 			c.Mu.Lock()
 			c.ChainHeight++
 			c.LastBlock = *b
 			c.Mu.Unlock()
 
-			err := b.SaveBlockInDB(&c.DB)
+			err := b.SaveBlockInDB(&c.DB, &sync.Mutex{})
 			if err != nil {
 				log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
 			}

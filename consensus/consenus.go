@@ -21,6 +21,5 @@ type Engin interface {
 	Close()
 	// Resume engine
 	Resume()
-
 	GetHash() []byte
 }

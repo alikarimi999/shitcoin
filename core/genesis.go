@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -43,7 +44,7 @@ func (c *Chain) creatGenesis(to types.Address, amount float64) error {
 
 func SaveGenInDB(b types.Block, d *database.Database) error {
 
-	err := b.SaveBlockInDB(d)
+	err := b.SaveBlockInDB(d, &sync.Mutex{})
 	if err != nil {
 		log.Fatalln(err)
 	}

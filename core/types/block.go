@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/alikarimi999/shitcoin/database"
 )
@@ -58,9 +59,11 @@ func (b *Block) Validate_hash() bool {
 
 }
 
-func (b Block) SaveBlockInDB(d *database.Database) error {
+func (b Block) SaveBlockInDB(d *database.Database, mu *sync.Mutex) error {
 
+	mu.Lock()
 	block := Serialize(b)
+	mu.Unlock()
 
 	key := b.BH.BlockHash
 	value := block
@@ -73,6 +76,22 @@ func (b Block) SaveBlockInDB(d *database.Database) error {
 	err = d.DB.Put([]byte("last_hash"), b.BH.BlockHash, nil)
 	fmt.Printf("Last Block in database is %x\n\n", b.BH.BlockHash)
 	return err
+}
+
+// a deep copy of Block
+func (b *Block) SnapShot() *Block {
+
+	bh := *b.BH
+	nb := &Block{
+		BH: &bh,
+	}
+
+	for _, tx := range b.Transactions {
+		t := *tx
+		nb.Transactions = append(nb.Transactions, &t)
+	}
+
+	return nb
 }
 
 func (b *Block) Serialize() []byte {

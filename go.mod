@@ -12,7 +12,6 @@ require (
 require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/labstack/gommon v0.3.1 // indirect
-	github.com/maruel/panicparse/v2 v2.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.11 // indirect
 	github.com/mattn/go-isatty v0.0.14 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect

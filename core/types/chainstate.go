@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"sync"
 
 	"github.com/alikarimi999/shitcoin/database"
 )
 
 type ChainState struct {
+	Mu    *sync.Mutex
 	Utxos map[Account][]*UTXO
 	DB    database.Database
 }
@@ -19,6 +21,7 @@ type ChainState struct {
 func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 
 	utxos := []*UTXO{}
+
 	// delete spent Token
 	if !tx.IsCoinbase() {
 
@@ -35,7 +38,9 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 			}
 
 		}
+		u.Mu.Lock()
 		u.Utxos[Account(Pub2Address(pk, false))] = utxos
+		u.Mu.Unlock()
 
 		utxos = []*UTXO{}
 
@@ -87,14 +92,16 @@ func (ch *ChainState) Loadchainstate() {
 	ch.Utxos = utxos
 }
 
+func (c *ChainState) Clean() {
+	c.Mu = &sync.Mutex{}
+	c.Utxos = make(map[Account][]*UTXO)
+}
+
 // validate block's transactions
 // and if transaction is valid update in memory UTXO set
 func (ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
 
-	tempChainstate := &ChainState{}
-	tempChainstate.Utxos = make(map[Account][]*UTXO)
-	tempChainstate.Utxos = ch.Utxos
-
+	tempChainstate := ch.SnapShot()
 	for _, tx := range b.Transactions {
 
 		if tx.IsCoinbase() {
@@ -137,6 +144,7 @@ func (u *ChainState) Verifyhash(tx *Transaction) bool {
 
 func (c *ChainState) SnapShot() *ChainState {
 	ch := &ChainState{
+		Mu:    &sync.Mutex{},
 		Utxos: make(map[Account][]*UTXO),
 		DB:    c.DB,
 	}

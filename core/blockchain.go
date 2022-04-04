@@ -16,7 +16,7 @@ const (
 )
 
 type Chain struct {
-	Mu          sync.Mutex
+	Mu          *sync.Mutex
 	ChainId     types.Chainid
 	ChainHeight uint64
 	LastBlock   types.Block
@@ -35,7 +35,7 @@ type Chain struct {
 
 func NewChain(path string, port int) (*Chain, error) {
 	c := &Chain{
-		Mu:          sync.Mutex{},
+		Mu:          &sync.Mutex{},
 		ChainId:     0,
 		ChainHeight: 0,
 		LastBlock:   *types.NewBlock(),
@@ -43,11 +43,13 @@ func NewChain(path string, port int) (*Chain, error) {
 		MemPool: &types.MemPool{
 			Transactions: []*types.Transaction{},
 			Chainstate: &types.ChainState{
+				Mu:    &sync.Mutex{},
 				Utxos: make(map[types.Account][]*types.UTXO),
 			},
 		},
 		Engine: pow.NewPowEngine(),
 		Chainstate: &types.ChainState{
+			Mu:    &sync.Mutex{},
 			Utxos: make(map[types.Account][]*types.UTXO),
 		},
 		MinerAdd:   nil,

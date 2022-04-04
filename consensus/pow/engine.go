@@ -2,7 +2,6 @@ package pow
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"math"
 	"math/big"
@@ -76,12 +75,13 @@ search:
 
 			pe.block.BH.Nonce = n
 			hash := pe.block.Hash()
-			fmt.Printf("\r%x", hash)
+			// fmt.Printf("\r%x", hash)
 			intHash.SetBytes(hash)
 
 			if intHash.Cmp(pe.target) == -1 {
 				pe.block.BH.BlockHash = hash
 				pe.result = hash
+				atomic.StoreInt32(&pe.running, 0)
 				return true
 
 			}
@@ -131,8 +131,7 @@ func (pe *PowEngine) Pause() {
 
 func (pe *PowEngine) Close() {
 	atomic.StoreInt32(&pe.running, 0)
-	close(pe.abort)
-	// pe.abort <- struct{}{}
+	pe.abort <- struct{}{}
 }
 
 func (pe *PowEngine) Resume() {

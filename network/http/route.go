@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
+	"sync"
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -17,20 +17,14 @@ const (
 )
 
 type Objects struct {
+	Mu        sync.Mutex
 	Ch        *core.Chain
 	Port      int
 	BroadChan chan *MsgBlock
 	Cl        http.Client
 }
 
-func RunServer(c *core.Chain, port int) {
-
-	o := Objects{
-		Ch:        c,
-		Port:      port,
-		BroadChan: make(chan *MsgBlock),
-		Cl:        http.Client{Timeout: 5 * time.Second},
-	}
+func RunServer(o *Objects, port int) {
 
 	go o.BroadMinedBlock()
 	go o.BroadBlock()
@@ -85,7 +79,9 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 		if o.Ch.ChainHeight < n.NodeHeight {
 			fmt.Printf("... Node %s had %d mined block more\n", n.NodeId, n.NodeHeight-o.Ch.ChainHeight)
 			fmt.Printf("... Trying to sync with Node %s\n", n.NodeId)
+			o.Ch.Mu.Lock()
 			Sync(o.Ch, n)
+			o.Ch.Mu.Unlock()
 		}
 	}
 
@@ -130,7 +126,7 @@ Out:
 
 func (o *Objects) MinedBlock(ctx echo.Context) error {
 
-	mb := new(MsgBlock)
+	mb := NewMsgBlock()
 	err := ctx.Bind(mb)
 	if err != nil {
 		return err
@@ -139,21 +135,20 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 	log.Printf("Block: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
 
 	o.Ch.Mu.Lock()
-	last_block := o.Ch.LastBlock
+	defer o.Ch.Mu.Unlock()
 	o.Ch.Chainstate.Loadchainstate()
-	o.Ch.Mu.Unlock()
 
-	if mb.Block.BH.BlockIndex > last_block.BH.BlockIndex+2 {
+	if mb.Block.BH.BlockIndex > o.Ch.LastBlock.BH.BlockIndex+2 {
 		log.Println("Detecting a soft fork")
 		return nil
 	}
 
-	if mb.Block.BH.BlockIndex-1 == last_block.BH.BlockIndex {
+	if mb.Block.BH.BlockIndex-1 == o.Ch.LastBlock.BH.BlockIndex {
 		// pause mining process that trying to mine this block
 		o.Ch.Engine.Pause()
 		log.Println("  Proccessing Block")
 
-		if !BlockValidator(*mb.Block, o.Ch.Chainstate, last_block) {
+		if !BlockValidator(*mb.Block, o.Ch.Chainstate, o.Ch.LastBlock) {
 			// resume paused mining process
 			o.Ch.Engine.Resume()
 			log.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
@@ -165,19 +160,17 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		o.Ch.Mu.Lock()
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
 		o.Ch.KnownNodes[mb.Sender].NodeHeight++
-		o.Ch.Mu.Unlock()
+
+		go o.Ch.AddBlockInDB(mb.Block, mb.Mu)
 
 		// Broadcasting valid new Mined block in network
 		// Reciver is BroadBlock function
 		o.BroadChan <- mb
 
-		o.Ch.AddBlockInDB(mb.Block)
-		SaveBlocksenderInDB(mb.Block.BH.BlockHash, mb.Sender, o.Ch.Chainstate.DB)
 		o.Ch.SyncUtxoSet()
 
 	}

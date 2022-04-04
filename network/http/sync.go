@@ -52,11 +52,14 @@ func (n *NodesQueue) Pop() *types.Node {
 
 // Initial block download refers to the process where nodes synchronize themselves to the network
 //by downloading blocks that are new to them
-func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
+func (o *Objects) IBD(wg sync.WaitGroup) {
 
 	defer wg.Done()
 	// sync node is node with best chain
 	syncNode := &types.Node{}
+
+	o.Ch.Mu.Lock()
+	defer o.Ch.Mu.Unlock()
 
 	for _, node := range o.Ch.KnownNodes {
 		if syncNode.NodeHeight <= node.NodeHeight {
@@ -78,40 +81,13 @@ func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
 		fmt.Printf("Sync node is %s with %d chain height\n", syncNode.FullAdd, syncNode.NodeHeight)
 		fmt.Println("Trying to Sync with Sync Node")
 
-		// Getting hash of remain mined Blocks from sync node
-		bh, err := getData(o.Ch, syncNode.FullAdd, cl)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-
-		// Downloading mined Blocks
-		for i := 0; i < len(bh); i++ {
-			hash := bh[blockIndex(o.Ch.LastBlock.BH.BlockIndex+1)]
-
-			mb := getBlock(hash, types.NodeID(o.Ch.MinerAdd), syncNode.FullAdd, cl)
-			if reflect.DeepEqual(mb, new(MsgBlock)) {
-				break
-			}
-			fmt.Printf("Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
-
-			// check if block is valid
-			if BlockValidator(*mb.Block, o.Ch.MemPool.Chainstate, o.Ch.LastBlock) {
-				fmt.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
-				break
-
-			}
-			fmt.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
-			o.Ch.AddBlockInDB(mb.Block)
-			o.Ch.SyncUtxoSet()
-
-			o.Ch.LastBlock = *mb.Block
-
-		}
+		Sync(o.Ch, syncNode)
 	}
 }
 
 // sync with node that has a bigger chain
 func Sync(c *core.Chain, n *types.Node) {
+
 	if c.ChainHeight >= n.NodeHeight {
 		fmt.Println(".... This Node does not have a better chain")
 		return
@@ -119,7 +95,7 @@ func Sync(c *core.Chain, n *types.Node) {
 
 	cl := http.Client{Timeout: 5 * time.Second}
 	// Getting hash of remain mined Blocks from sync node
-	bh, err := getData(c, n.FullAdd, cl)
+	bh, err := getData(c.LastBlock.BH.BlockHash, n.FullAdd, cl)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -141,7 +117,7 @@ func Sync(c *core.Chain, n *types.Node) {
 
 		}
 		fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
-		c.AddBlockInDB(mb.Block)
+		c.AddBlockInDB(mb.Block, mb.Mu)
 		c.SyncUtxoSet()
 
 		c.LastBlock = *mb.Block
@@ -154,7 +130,7 @@ func Sync(c *core.Chain, n *types.Node) {
 
 func getBlock(hash []byte, nid types.NodeID, syncAddress string, cl http.Client) *MsgBlock {
 	data := GetBlock{nid, hash}
-	mb := new(MsgBlock)
+	mb := NewMsgBlock()
 
 	msg, err := json.Marshal(data)
 	if err != nil {
@@ -206,9 +182,10 @@ func getGen(syncNode string, cl http.Client) *types.Block {
 
 }
 
-func getData(c *core.Chain, syncAddress string, cl http.Client) (map[blockIndex][]byte, error) {
+func getData(lh []byte, syncAddress string, cl http.Client) (map[blockIndex][]byte, error) {
 
-	data := GetData{c.LastBlock.BH.BlockHash}
+	data := GetData{lh}
+
 	b, err := json.Marshal(data)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -433,6 +410,7 @@ func (o *Objects) BroadMinedBlock() {
 		// Sender is Miner function
 		block := <-o.Ch.MinedBlock
 		mb := MsgBlock{
+			Mu:     &sync.Mutex{},
 			Sender: types.NodeID(o.Ch.MinerAdd),
 			Block:  block,
 			Miner:  o.Ch.MinerAdd,
@@ -457,6 +435,8 @@ func (o *Objects) BroadBlock() {
 		// Sender is MinedBlock function
 		mb := <-o.BroadChan
 
+		mb.Mu.Lock()
+		defer mb.Mu.Unlock()
 		for _, node := range o.Ch.KnownNodes {
 			// dont send to miner of block or sender
 			if mb.Sender == node.NodeId || types.NodeID(mb.Miner) == node.NodeId {
