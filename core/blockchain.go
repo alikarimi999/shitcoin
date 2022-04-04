@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
 )
 
@@ -14,19 +15,19 @@ const (
 
 type Chain struct {
 	Mu                  sync.Mutex
-	ChainId             Chainid
+	ChainId             types.Chainid
 	ChainHeight         uint64
-	Blocks              []*Block
-	LastBlock           Block
-	MemPool             *memPool
-	Chainstate          *ChainState
+	Blocks              []*types.Block
+	LastBlock           types.Block
+	MemPool             *types.MemPool
+	Chainstate          *types.ChainState
 	DB                  database.Database
-	MinerAdd            Address
-	KnownNodes          map[NodeID]*Node
+	MinerAdd            types.Address
+	KnownNodes          map[types.NodeID]*types.Node
 	DBPath              string
 	Port                int
-	BlockChann          chan *Block
-	MinedBlock          chan *Block
+	BlockChann          chan *types.Block
+	MinedBlock          chan *types.Block
 	FindingNonceStarted bool
 }
 
@@ -35,24 +36,24 @@ func NewChain(path string, port int) (*Chain, error) {
 		Mu:          sync.Mutex{},
 		ChainId:     0,
 		ChainHeight: 0,
-		Blocks:      make([]*Block, 0),
-		LastBlock:   *NewBlock(),
+		Blocks:      make([]*types.Block, 0),
+		LastBlock:   *types.NewBlock(),
 
-		MemPool: &memPool{
-			Transactions: []*Transaction{},
-			Chainstate: &ChainState{
-				Utxos: make(map[Account][]*UTXO),
+		MemPool: &types.MemPool{
+			Transactions: []*types.Transaction{},
+			Chainstate: &types.ChainState{
+				Utxos: make(map[types.Account][]*types.UTXO),
 			},
 		},
-		Chainstate: &ChainState{
-			Utxos: make(map[Account][]*UTXO),
+		Chainstate: &types.ChainState{
+			Utxos: make(map[types.Account][]*types.UTXO),
 		},
 		MinerAdd:            nil,
-		KnownNodes:          make(map[NodeID]*Node),
+		KnownNodes:          make(map[types.NodeID]*types.Node),
 		DBPath:              path,
 		Port:                port,
-		BlockChann:          make(chan *Block),
-		MinedBlock:          make(chan *Block),
+		BlockChann:          make(chan *types.Block),
+		MinedBlock:          make(chan *types.Block),
 		FindingNonceStarted: false,
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
@@ -61,17 +62,24 @@ func NewChain(path string, port int) (*Chain, error) {
 	return c, nil
 }
 
-func (c *Chain) SetupChain(miner Address, amount float64) error {
+func (c *Chain) SyncUtxoSet() error {
+
+	saveUTXOsInDB(*c.MemPool.Chainstate)
+
+	return nil
+}
+
+func (c *Chain) SetupChain(miner types.Address, amount float64) error {
 
 	err := c.creatGenesis(miner, amount)
 
 	return err
 }
 
-func (c *Chain) NewNode() *Node {
+func (c *Chain) NewNode() *types.Node {
 
-	n := &Node{
-		NodeId:     NodeID(c.MinerAdd),
+	n := &types.Node{
+		NodeId:     types.NodeID(c.MinerAdd),
 		FullAdd:    "",
 		Port:       fmt.Sprintf(":%d", c.Port),
 		LastHash:   c.LastBlock.BH.BlockHash,

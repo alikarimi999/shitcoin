@@ -3,9 +3,11 @@ package core
 import (
 	"log"
 	"time"
+
+	"github.com/alikarimi999/shitcoin/core/types"
 )
 
-func Mine(c *Chain, b *Block, amount int) bool {
+func Mine(c *Chain, b *types.Block, amount int) bool {
 
 	log.Println("Start Mining")
 

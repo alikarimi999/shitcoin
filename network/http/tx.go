@@ -4,12 +4,13 @@ import (
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/labstack/echo/v4"
 )
 
 func (o *Objects) getTrx(ctx echo.Context) error {
 	c := o.Ch
-	var t core.Transaction
+	var t types.Transaction
 	err := ctx.Bind(&t)
 
 	if err != nil {
@@ -30,13 +31,13 @@ func (o *Objects) getTrx(ctx echo.Context) error {
 func (o *Objects) sendUtxoset(ctx echo.Context) error {
 
 	account := ctx.QueryParam("account")
-	msg := sendUtxoset(o.Ch, core.Account(account))
+	msg := sendUtxoset(o.Ch, types.Account(account))
 
 	ctx.JSONPretty(200, msg, "  ")
 	return nil
 }
 
-func sendUtxoset(c *core.Chain, a core.Account) msgUTXOSet {
+func sendUtxoset(c *core.Chain, a types.Account) msgUTXOSet {
 
 	var s msgUTXOSet
 	s.Account = a

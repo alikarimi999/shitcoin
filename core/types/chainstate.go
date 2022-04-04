@@ -1,21 +1,16 @@
-package core
+package types
 
 import (
+	"bytes"
 	"fmt"
 	"log"
+
+	"github.com/alikarimi999/shitcoin/database"
 )
 
-type UTXO struct {
-	Txid  []byte
-	Index uint
-	Txout *TxOut
-}
-
-func (c *Chain) SyncUtxoSet() error {
-
-	saveUTXOsInDB(*c.MemPool.Chainstate)
-
-	return nil
+type ChainState struct {
+	Utxos map[Account][]*UTXO
+	DB    database.Database
 }
 
 // when node receive a transaction and verify it
@@ -60,48 +55,6 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 
 }
 
-// this method read UTXOs from blockchain database and add it to in memory chain state
-func (c *Chain) Retrieve_chainstate_on_db() {
-
-	spentTxouts := make(map[string][]int)
-	iter := c.NewIter()
-
-	for {
-		block := iter.Next()
-		fmt.Printf("Proccessing Block: %x from Database\n", block.BH.BlockHash)
-		for j := len(block.Transactions) - 1; j >= 0; j-- {
-			tx := block.Transactions[j]
-		Output:
-			for outindex, out := range tx.TxOutputs {
-				if spentTxouts[string(tx.TxID)] != nil {
-					for _, spentIndex := range spentTxouts[string(tx.TxID)] {
-						if spentIndex == outindex {
-							continue Output
-						}
-					}
-				}
-
-				utxo := &UTXO{tx.TxID, uint(outindex), out}
-				c.Chainstate.Utxos[Account(Pub2Address(out.PublicKeyHash, true))] = append(c.Chainstate.Utxos[Account(Pub2Address(out.PublicKeyHash, true))], utxo)
-
-				fmt.Printf("Token with value %d added to UTXO set of %s\n\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
-			}
-			if !tx.IsCoinbase() {
-				for _, in := range tx.TxInputs {
-					spentTxouts[string(in.OutPoint)] = append(spentTxouts[string(in.OutPoint)], int(in.Vout))
-				}
-			}
-
-		}
-		if len(block.BH.PrevHash) == 0 {
-			break
-		}
-	}
-	c.MemPool.Chainstate.Utxos = c.Chainstate.Utxos
-	c.Chainstate.Utxos = make(map[Account][]*UTXO)
-
-}
-
 // this function read chainstate from chainstate databse and add it to in memory Chainstate
 func (ch *ChainState) Loadchainstate() {
 
@@ -132,4 +85,67 @@ func (ch *ChainState) Loadchainstate() {
 		log.Fatalln(err)
 	}
 	ch.Utxos = utxos
+}
+
+// validate block's transactions
+// and if transaction is valid update in memory UTXO set
+func (ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
+
+	tempChainstate := &ChainState{}
+	tempChainstate.Utxos = make(map[Account][]*UTXO)
+	tempChainstate.Utxos = ch.Utxos
+
+	for _, tx := range b.Transactions {
+
+		if tx.IsCoinbase() {
+			tempChainstate.UpdateUtxoSet(tx)
+
+			continue
+		}
+		trx := *tx
+		if !tempChainstate.Verifyhash(tx) || !trx.Checksig() {
+
+			return nil, false
+		}
+		tempChainstate.UpdateUtxoSet(tx)
+	}
+
+	return tempChainstate.Utxos, true
+}
+
+// OP_EQUALVERIFY
+func (u *ChainState) Verifyhash(tx *Transaction) bool {
+	if !tx.IsCoinbase() {
+		for _, in := range tx.TxInputs {
+			pk := in.PublicKey
+			var pkh []byte
+			for _, utxo := range u.Utxos[Account(Pub2Address(pk, false))] {
+				if in.Vout == utxo.Index {
+					pkh = utxo.Txout.PublicKeyHash
+					break
+				}
+			}
+
+			if !bytes.Equal(pkh, Hash160(pk)) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+func (c *ChainState) SnapShot() *ChainState {
+	ch := &ChainState{
+		Utxos: make(map[Account][]*UTXO),
+		DB:    c.DB,
+	}
+
+	for a, u := range c.Utxos {
+		for _, utxo := range u {
+			copy_utxo := *utxo
+			ch.Utxos[a] = append(ch.Utxos[a], &copy_utxo)
+		}
+	}
+	return ch
 }

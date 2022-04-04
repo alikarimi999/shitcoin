@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 
+	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
 )
 
@@ -26,9 +27,9 @@ func Loadchain(dbPath string, port int) *Chain {
 
 }
 
-func ReadLastBlock(d database.Database) *Block {
+func ReadLastBlock(d database.Database) *types.Block {
 
-	last_block := NewBlock()
+	last_block := types.NewBlock()
 
 	lh, err := d.DB.Get([]byte("last_hash"), nil)
 	if err != nil {
@@ -42,7 +43,7 @@ func ReadLastBlock(d database.Database) *Block {
 
 	i := Deserialize(b, last_block)
 
-	if block, ok := i.(*Block); ok {
+	if block, ok := i.(*types.Block); ok {
 		return block
 
 	}

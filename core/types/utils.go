@@ -1,9 +1,7 @@
-package core
+package types
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/gob"
 	"log"
 
 	"github.com/mr-tron/base58"
@@ -59,38 +57,6 @@ func Hash160(pub []byte) []byte {
 	pkh := hasher.Sum(nil)
 
 	return pkh
-}
-
-func SerializeTxs(txs []*Transaction) []byte {
-
-	var result []byte
-	for _, tx := range txs {
-		result = append(result, tx.Serialize()...)
-	}
-
-	return result
-}
-
-func (tx *Transaction) Serialize() []byte {
-
-	buff := new(bytes.Buffer)
-
-	encoder := gob.NewEncoder(buff)
-	encoder.Encode(tx)
-
-	return buff.Bytes()
-
-}
-
-func (tx *Transaction) SetHash() {
-	for _, in := range tx.TxInputs {
-		in.Signature = nil
-	}
-	data := tx.Serialize()
-
-	hash := sha256.Sum256(data)
-
-	tx.TxID = hash[:]
 }
 
 // Conver Pub Key to Coin address

@@ -5,21 +5,22 @@ import (
 	"log"
 	"time"
 
+	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
 )
 
 // Creat genesis Block
-func (c *Chain) creatGenesis(to Address, amount float64) error {
+func (c *Chain) creatGenesis(to types.Address, amount float64) error {
 
-	pkh := Add2PKH(to)
-	genesis_block := &Block{
-		BH: &blockHeader{
+	pkh := types.Add2PKH(to)
+	genesis_block := &types.Block{
+		BH: &types.BlockHeader{
 			Timestamp:  time.Now().UnixNano(),
 			PrevHash:   []byte{},
 			BlockIndex: 0,
 			Difficulty: 10,
 		},
-		Transactions: []*Transaction{CoinbaseTx(pkh, 100)},
+		Transactions: []*types.Transaction{types.CoinbaseTx(pkh, 100)},
 	}
 
 	genesis_block.BH.BlockHash = genesis_block.Hash()
@@ -41,7 +42,7 @@ func (c *Chain) creatGenesis(to Address, amount float64) error {
 
 }
 
-func SaveGenInDB(b Block, d *database.Database) error {
+func SaveGenInDB(b types.Block, d *database.Database) error {
 
 	err := b.SaveBlockInDB(d)
 	if err != nil {

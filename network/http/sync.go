@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/core/types"
 )
 
 const (
@@ -21,16 +22,16 @@ const (
 )
 
 type NodesQueue struct {
-	nodes chan *core.Node
+	nodes chan *types.Node
 }
 
 func NewNodesQueue(size int) *NodesQueue {
 	return &NodesQueue{
-		nodes: make(chan *core.Node, size),
+		nodes: make(chan *types.Node, size),
 	}
 }
 
-func (n *NodesQueue) Push(node *core.Node) {
+func (n *NodesQueue) Push(node *types.Node) {
 	select {
 	case n.nodes <- node:
 	default:
@@ -39,13 +40,13 @@ func (n *NodesQueue) Push(node *core.Node) {
 	}
 }
 
-func (n *NodesQueue) Pop() *core.Node {
+func (n *NodesQueue) Pop() *types.Node {
 	select {
 	case node := <-n.nodes:
 		return node
 	default:
 		fmt.Println("Nodes Queue is empty ")
-		return &core.Node{}
+		return &types.Node{}
 	}
 }
 
@@ -55,7 +56,7 @@ func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
 
 	defer wg.Done()
 	// sync node is node with best chain
-	syncNode := &core.Node{}
+	syncNode := &types.Node{}
 
 	for _, node := range o.Ch.KnownNodes {
 		if syncNode.NodeHeight <= node.NodeHeight {
@@ -87,7 +88,7 @@ func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
 		for i := 0; i < len(bh); i++ {
 			hash := bh[blockIndex(o.Ch.LastBlock.BH.BlockIndex+1)]
 
-			mb := getBlock(hash, core.NodeID(o.Ch.MinerAdd), syncNode.FullAdd, cl)
+			mb := getBlock(hash, types.NodeID(o.Ch.MinerAdd), syncNode.FullAdd, cl)
 			if reflect.DeepEqual(mb, new(MsgBlock)) {
 				break
 			}
@@ -110,7 +111,7 @@ func IBD(o *Objects, cl http.Client, wg sync.WaitGroup) {
 }
 
 // sync with node that has a bigger chain
-func Sync(c *core.Chain, n *core.Node) {
+func Sync(c *core.Chain, n *types.Node) {
 	if c.ChainHeight >= n.NodeHeight {
 		fmt.Println(".... This Node does not have a better chain")
 		return
@@ -127,7 +128,7 @@ func Sync(c *core.Chain, n *core.Node) {
 	for i := 0; i < len(bh); i++ {
 		hash := bh[blockIndex(c.LastBlock.BH.BlockIndex+1)]
 
-		mb := getBlock(hash, core.NodeID(c.MinerAdd), n.FullAdd, cl)
+		mb := getBlock(hash, types.NodeID(c.MinerAdd), n.FullAdd, cl)
 		if reflect.DeepEqual(mb, new(MsgBlock)) {
 			break
 		}
@@ -151,7 +152,7 @@ func Sync(c *core.Chain, n *core.Node) {
 	}
 }
 
-func getBlock(hash []byte, nid core.NodeID, syncAddress string, cl http.Client) *MsgBlock {
+func getBlock(hash []byte, nid types.NodeID, syncAddress string, cl http.Client) *MsgBlock {
 	data := GetBlock{nid, hash}
 	mb := new(MsgBlock)
 
@@ -180,7 +181,7 @@ func getBlock(hash []byte, nid core.NodeID, syncAddress string, cl http.Client) 
 }
 
 // get genesis block
-func getGen(syncNode string, cl http.Client) *core.Block {
+func getGen(syncNode string, cl http.Client) *types.Block {
 	resp, err := cl.Get(fmt.Sprintf("%s/getgen", syncNode))
 	if err != nil {
 		fmt.Println(err.Error())
@@ -192,7 +193,7 @@ func getGen(syncNode string, cl http.Client) *core.Block {
 		fmt.Println(err.Error())
 		return nil
 	}
-	block := new(core.Block)
+	block := new(types.Block)
 	json.Unmarshal(body, block)
 	if block.Validate_hash() {
 		fmt.Printf("Genesis Block downloaded\n")
@@ -235,9 +236,9 @@ func getData(c *core.Chain, syncAddress string, cl http.Client) (map[blockIndex]
 
 }
 
-func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*core.Node {
+func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 
-	src_nodes := []*core.Node{}
+	src_nodes := []*types.Node{}
 
 	// first element in slice always refer to node itself
 	src_nodes = append(src_nodes, c.NewNode())
@@ -299,7 +300,7 @@ Out:
 			}
 
 			// dont add if n refers to this node
-			if n.NodeId == core.NodeID(c.MinerAdd) {
+			if n.NodeId == types.NodeID(c.MinerAdd) {
 				continue
 			}
 			if _, ok := c.KnownNodes[n.NodeId]; ok {
@@ -331,14 +332,14 @@ Out:
 // Check if two nodes have same genesis block or not
 // only if nodes have same genesis block can pair
 // and return genesis block and a boolean
-func IsInSameNet(genesis_hash []byte, node *core.Node) (*core.Block, bool) {
+func IsInSameNet(genesis_hash []byte, node *types.Node) (*types.Block, bool) {
 	gen_block := getGen(node.FullAdd, http.Client{Timeout: 5 * time.Second})
 	return gen_block, bytes.Equal(gen_block.BH.BlockHash, genesis_hash)
 }
 
-func NodeInfo(dst string, cl http.Client) (*core.Node, error) {
+func NodeInfo(dst string, cl http.Client) (*types.Node, error) {
 
-	node := &core.Node{}
+	node := &types.Node{}
 	resp, err := cl.Get(fmt.Sprintf("%s/nodeinfo", dst))
 	if err != nil {
 		return node, err
@@ -412,7 +413,7 @@ func PairNode(c *core.Chain, dst string) error {
 }
 
 // Broadcast received transaction to Known Nodes
-func BroadTrx(c *core.Chain, t core.Transaction) {
+func BroadTrx(c *core.Chain, t types.Transaction) {
 	cl := http.Client{Timeout: 5 * time.Second}
 	b, err := json.Marshal(t)
 	if err != nil {
@@ -432,14 +433,14 @@ func (o *Objects) BroadMinedBlock() {
 		// Sender is Miner function
 		block := <-o.Ch.MinedBlock
 		mb := MsgBlock{
-			Sender: core.NodeID(o.Ch.MinerAdd),
+			Sender: types.NodeID(o.Ch.MinerAdd),
 			Block:  block,
 			Miner:  o.Ch.MinerAdd,
 		}
 
 		for _, node := range o.Ch.KnownNodes {
 			// dont send to miner of block or sender
-			if mb.Sender == node.NodeId || core.NodeID(mb.Miner) == node.NodeId {
+			if mb.Sender == node.NodeId || types.NodeID(mb.Miner) == node.NodeId {
 				continue
 			}
 
@@ -458,14 +459,14 @@ func (o *Objects) BroadBlock() {
 
 		for _, node := range o.Ch.KnownNodes {
 			// dont send to miner of block or sender
-			if mb.Sender == node.NodeId || core.NodeID(mb.Miner) == node.NodeId {
+			if mb.Sender == node.NodeId || types.NodeID(mb.Miner) == node.NodeId {
 				continue
 			}
 
 			prev_sender := mb.Sender
 
 			// Set new sender
-			mb.Sender = core.NodeID(o.Ch.MinerAdd)
+			mb.Sender = types.NodeID(o.Ch.MinerAdd)
 
 			b, _ := json.Marshal(mb)
 			fmt.Printf("Sending block %d: %x to %s which recieved from %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, node.NodeId, prev_sender)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
 	"github.com/labstack/echo/v4"
 )
@@ -76,7 +77,7 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 		if len(o.Ch.KnownNodes) >= MaxKnownNodes {
 			break
 		}
-		if _, ok := o.Ch.KnownNodes[n.NodeId]; !ok && n.NodeId != core.NodeID(o.Ch.MinerAdd) {
+		if _, ok := o.Ch.KnownNodes[n.NodeId]; !ok && n.NodeId != types.NodeID(o.Ch.MinerAdd) {
 			o.Ch.KnownNodes[n.NodeId] = n
 			fmt.Printf("...Add Node %s with address %s to KnownNodes\n", n.NodeId, n.FullAdd)
 		}
@@ -92,8 +93,8 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 	return nil
 }
 
-func sendNode(c *core.Chain, src []*core.Node, sender core.NodeID) []*core.Node {
-	share_nodes := []*core.Node{}
+func sendNode(c *core.Chain, src []*types.Node, sender types.NodeID) []*types.Node {
+	share_nodes := []*types.Node{}
 
 	// first node that any node share to other nodes refers to itself
 	n := c.NewNode()
@@ -176,7 +177,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 }
 
 // save block sender in chainstate database
-func SaveBlocksenderInDB(hash []byte, sender core.NodeID, d database.Database) error {
+func SaveBlocksenderInDB(hash []byte, sender types.NodeID, d database.Database) error {
 
 	err := d.DB.Put(hash, []byte(sender), nil)
 	if err != nil {
@@ -194,7 +195,7 @@ func (o *Objects) SendBlock(ctx echo.Context) error {
 	hash := gb.BlockHash
 
 	block := core.ReadBlock(o.Ch.DB, hash)
-	mb := NewMsgdBlock(block, core.NodeID(o.Ch.MinerAdd), block.BH.Miner)
+	mb := NewMsgdBlock(block, types.NodeID(o.Ch.MinerAdd), block.BH.Miner)
 
 	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)
 	ctx.JSONPretty(200, mb, " ")

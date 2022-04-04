@@ -1,7 +1,7 @@
 package network
 
 import (
-	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/core/types"
 )
 
 type InvType int
@@ -13,19 +13,19 @@ const (
 )
 
 type msgUTXOSet struct {
-	Account core.Account `json:"account"`
-	Utxos   []core.UTXO  `json:"utxos"`
+	Account types.Account `json:"account"`
+	Utxos   []types.UTXO  `json:"utxos"`
 }
 
 type MsgBlock struct {
-	Sender core.NodeID
-	Block  *core.Block
-	Miner  core.Address
+	Sender types.NodeID
+	Block  *types.Block
+	Miner  types.Address
 }
 
 type GetNode struct {
-	SrcNodes   []*core.Node
-	ShareNodes []*core.Node
+	SrcNodes   []*types.Node
+	ShareNodes []*types.Node
 }
 
 type GetData struct {
@@ -37,7 +37,7 @@ type GetData struct {
 
 type GetBlock struct {
 	// node that request for block
-	Node      core.NodeID
+	Node      types.NodeID
 	BlockHash []byte
 }
 
@@ -53,7 +53,7 @@ type Inv struct {
 	BlocksHash map[blockIndex][]byte
 }
 
-func NewMsgdBlock(b *core.Block, sender core.NodeID, miner core.Address) *MsgBlock {
+func NewMsgdBlock(b *types.Block, sender types.NodeID, miner types.Address) *MsgBlock {
 	mb := &MsgBlock{
 		Sender: sender,
 		Block:  b,
