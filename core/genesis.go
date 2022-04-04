@@ -25,7 +25,6 @@ func (c *Chain) creatGenesis(to types.Address, amount float64) error {
 
 	genesis_block.BH.BlockHash = genesis_block.Hash()
 
-	c.Blocks = append(c.Blocks, genesis_block)
 	c.LastBlock = *genesis_block
 
 	// we temprory add genesis output to mempool utxo set

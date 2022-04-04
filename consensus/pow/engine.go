@@ -2,19 +2,22 @@ package pow
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"log"
 	"math"
 	"math/big"
 	"sync/atomic"
 
-	"github.com/alikarimi999/shitcoin/core"
+	"github.com/alikarimi999/shitcoin/core/types"
+)
+
+const (
+	Difficulty uint64 = 14
 )
 
 // PowEngine is a consensus engine based on proof-of-work alghorithm
 type PowEngine struct {
-	block  *core.Block
+	block  *types.Block
 	target *big.Int
 
 	// block hash
@@ -29,16 +32,15 @@ type PowEngine struct {
 	abort  chan struct{}
 }
 
-func NewPowEngine(d uint64, b *core.Block) *PowEngine {
+func NewPowEngine() *PowEngine {
 
 	target := big.NewInt(1)
-	target.Lsh(target, 256-uint(d))
-	b.BH.Difficulty = d
+	target.Lsh(target, 256-uint(Difficulty))
 
 	pe := &PowEngine{
-		block:  b,
+		block:  types.NewBlock(),
 		target: target,
-		result: b.BH.BlockHash,
+		result: []byte{},
 		pause:  make(chan struct{}),
 		resume: make(chan struct{}),
 		abort:  make(chan struct{}),
@@ -47,27 +49,27 @@ func NewPowEngine(d uint64, b *core.Block) *PowEngine {
 	return pe
 }
 
-func (pe *PowEngine) mine() ([]byte, error) {
+func (pe *PowEngine) mine() bool {
 
 	var intHash big.Int
 
 	var n uint64 = 0
-
+	log.Printf("Start mining block %d\n", pe.block.BH.BlockIndex)
 search:
 	for n < math.MaxUint64 {
 
 		select {
 		case <-pe.abort:
-			log.Println("POWEngine nonce search aborted")
+			log.Printf("POWEngine nonce search for block %d aborted\n", pe.block.BH.BlockIndex)
 			break search
 		case <-pe.pause:
-			log.Println("POWEngine nonce search paused")
+			log.Printf("POWEngine nonce search for block %d paused\n", pe.block.BH.BlockIndex)
 			select {
 			case <-pe.resume:
-				log.Println("POWEngine nonce search resumed")
+				log.Printf("POWEngine nonce search for block %d resumed\n", pe.block.BH.BlockIndex)
 				continue search
 			case <-pe.abort:
-				log.Println("POWEngine nonce search aborted")
+				log.Printf("POWEngine nonce search for block %d aborted\n", pe.block.BH.BlockIndex)
 				break search
 			}
 		default:
@@ -80,19 +82,18 @@ search:
 			if intHash.Cmp(pe.target) == -1 {
 				pe.block.BH.BlockHash = hash
 				pe.result = hash
-				return hash, nil
+				return true
 
 			}
 			n++
 		}
 
 	}
-	fmt.Println()
 
-	return nil, errors.New(" ")
+	return false
 }
 
-func (pe *PowEngine) VerifyBlock(ch *core.ChainState, last_block core.Block) bool {
+func (pe *PowEngine) VerifyBlock(ch *types.ChainState, last_block types.Block) bool {
 
 	b := *pe.block
 
@@ -112,28 +113,35 @@ func (pe *PowEngine) IsRunning() bool {
 	return atomic.LoadInt32(&pe.running) == 1
 }
 
-func (pe *PowEngine) Start() ([]byte, error) {
-	atomic.StoreInt32(&pe.running, 1)
-	hash, err := pe.mine()
-
-	return hash, err
+func (pe *PowEngine) Start(b *types.Block) bool {
+	if !pe.IsRunning() {
+		atomic.StoreInt32(&pe.running, 1)
+		pe.block = b
+		return pe.mine()
+	}
+	return false
 }
 
 func (pe *PowEngine) Pause() {
-	if !pe.IsRunning() {
+	if pe.IsRunning() {
 		atomic.StoreInt32(&pe.running, 0)
 		pe.pause <- struct{}{}
 	}
 }
 
-func (pe *PowEngine) Abort() {
+func (pe *PowEngine) Close() {
 	atomic.StoreInt32(&pe.running, 0)
 	close(pe.abort)
+	// pe.abort <- struct{}{}
 }
 
 func (pe *PowEngine) Resume() {
-	if pe.IsRunning() {
+	if !pe.IsRunning() {
 		atomic.StoreInt32(&pe.running, 1)
 		pe.resume <- struct{}{}
 	}
+}
+
+func (pe *PowEngine) GetHash() []byte {
+	return pe.result
 }

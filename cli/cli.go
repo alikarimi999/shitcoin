@@ -139,7 +139,8 @@ func Miner(c *core.Chain, wg sync.WaitGroup) {
 
 		b.BH.Miner = c.MinerAdd
 
-		if core.Mine(c, b, 20) {
+		if c.Engine.Start(b) {
+			c.Engine.Close()
 
 			// reciver is in BroadMinedBlock function
 			c.MinedBlock <- b

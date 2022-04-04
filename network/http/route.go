@@ -139,9 +139,9 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 	log.Printf("Block: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
 
 	o.Ch.Mu.Lock()
-	defer o.Ch.Mu.Unlock()
 	last_block := o.Ch.LastBlock
 	o.Ch.Chainstate.Loadchainstate()
+	o.Ch.Mu.Unlock()
 
 	if mb.Block.BH.BlockIndex > last_block.BH.BlockIndex+2 {
 		log.Println("Detecting a soft fork")
@@ -149,19 +149,28 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 	}
 
 	if mb.Block.BH.BlockIndex-1 == last_block.BH.BlockIndex {
+		// pause mining process that trying to mine this block
+		o.Ch.Engine.Pause()
 		log.Println("  Proccessing Block")
 
 		if !BlockValidator(*mb.Block, o.Ch.Chainstate, last_block) {
+			// resume paused mining process
+			o.Ch.Engine.Resume()
 			log.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
 			return fmt.Errorf("block %x is not valid", mb.Block.BH.BlockHash)
 
 		}
+		// stop mining process beacuse block mined by another node
+		o.Ch.Engine.Close()
+		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
+		o.Ch.Mu.Lock()
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
 		o.Ch.KnownNodes[mb.Sender].NodeHeight++
+		o.Ch.Mu.Unlock()
 
 		// Broadcasting valid new Mined block in network
 		// Reciver is BroadBlock function

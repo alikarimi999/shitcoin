@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/alikarimi999/shitcoin/consensus"
+	"github.com/alikarimi999/shitcoin/consensus/pow"
 	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
 )
@@ -14,21 +16,21 @@ const (
 )
 
 type Chain struct {
-	Mu                  sync.Mutex
-	ChainId             types.Chainid
-	ChainHeight         uint64
-	Blocks              []*types.Block
-	LastBlock           types.Block
-	MemPool             *types.MemPool
-	Chainstate          *types.ChainState
-	DB                  database.Database
-	MinerAdd            types.Address
-	KnownNodes          map[types.NodeID]*types.Node
-	DBPath              string
-	Port                int
-	BlockChann          chan *types.Block
-	MinedBlock          chan *types.Block
-	FindingNonceStarted bool
+	Mu          sync.Mutex
+	ChainId     types.Chainid
+	ChainHeight uint64
+	LastBlock   types.Block
+	MemPool     *types.MemPool
+	Chainstate  *types.ChainState
+	DB          database.Database
+	Engine      consensus.Engin
+
+	MinerAdd   types.Address
+	KnownNodes map[types.NodeID]*types.Node
+	DBPath     string
+	Port       int
+	BlockChann chan *types.Block
+	MinedBlock chan *types.Block
 }
 
 func NewChain(path string, port int) (*Chain, error) {
@@ -36,7 +38,6 @@ func NewChain(path string, port int) (*Chain, error) {
 		Mu:          sync.Mutex{},
 		ChainId:     0,
 		ChainHeight: 0,
-		Blocks:      make([]*types.Block, 0),
 		LastBlock:   *types.NewBlock(),
 
 		MemPool: &types.MemPool{
@@ -45,16 +46,16 @@ func NewChain(path string, port int) (*Chain, error) {
 				Utxos: make(map[types.Account][]*types.UTXO),
 			},
 		},
+		Engine: pow.NewPowEngine(),
 		Chainstate: &types.ChainState{
 			Utxos: make(map[types.Account][]*types.UTXO),
 		},
-		MinerAdd:            nil,
-		KnownNodes:          make(map[types.NodeID]*types.Node),
-		DBPath:              path,
-		Port:                port,
-		BlockChann:          make(chan *types.Block),
-		MinedBlock:          make(chan *types.Block),
-		FindingNonceStarted: false,
+		MinerAdd:   nil,
+		KnownNodes: make(map[types.NodeID]*types.Node),
+		DBPath:     path,
+		Port:       port,
+		BlockChann: make(chan *types.Block),
+		MinedBlock: make(chan *types.Block),
 	}
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
