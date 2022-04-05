@@ -5,33 +5,25 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 )
 
-type Transaction struct {
-	Timestamp time.Time
-	TxID      []byte
-	TxInputs  []*TxIn
-	TxOutputs []*TxOut
-}
-
-type TxOut struct {
-	PublicKeyHash []byte
-	Value         int
-}
-
-type TxIn struct {
-	OutPoint  []byte
-	Vout      uint
-	Value     int
-	PublicKey []byte
-	Signature []byte
-}
-
 // adding transaction to transaction Pool
 func (c *Chain) AddTx2Pool(tx *types.Transaction) error {
+
+	c.MemPool.Mu.Lock()
+	defer c.MemPool.Mu.Unlock()
+
+	// these are transactions that added to block and sended to Miner function
+	// and deleted from mempool transactions
+	in_block_txs := []*types.Transaction{}
+
+	for _, t := range in_block_txs {
+		if bytes.Equal(t.TxID, tx.TxID) {
+			return fmt.Errorf("transaction %x exist in block that is mining now", tx.TxID)
+		}
+	}
 
 	for _, t := range c.MemPool.Transactions {
 		if bytes.Equal(t.TxID, tx.TxID) {
@@ -54,7 +46,9 @@ func (c *Chain) AddTx2Pool(tx *types.Transaction) error {
 			if err := c.MemPool.TransferTxs2Block(b, c.MinerAdd, 15); err != nil {
 				log.Println(err.Error())
 			} else {
-				log.Println("Mem Pool has 3 Transaction")
+
+				in_block_txs = c.MemPool.Transactions
+				c.MemPool.Clean()
 				// Reciver is in Miner function
 				c.BlockChann <- b
 				log.Println("Sending block to Mine function through BlockChann")

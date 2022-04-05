@@ -154,7 +154,7 @@ func Miner(c *core.Chain, wg sync.WaitGroup) {
 		b.BH.Miner = c.MinerAdd
 
 		if c.Engine.Start(b) {
-			log.Printf("Block %d with hash %x Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash)
+			log.Printf("Block %d with hash %x with %d transations Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
 
 			// reciver is in BroadMinedBlock function
 			c.MinedBlock <- b.SnapShot()
@@ -171,7 +171,7 @@ func Miner(c *core.Chain, wg sync.WaitGroup) {
 			log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
 
 			// Now we have to add utxoset to database
-			c.SyncUtxoSet()
+			c.SaveUtxoSet()
 
 		}
 	}

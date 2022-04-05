@@ -1,6 +1,9 @@
 package types
 
+import "sync"
+
 type MemPool struct {
+	Mu           *sync.Mutex
 	Transactions []*Transaction
 	Chainstate   *ChainState
 }
@@ -9,11 +12,9 @@ type MemPool struct {
 func (mp *MemPool) TransferTxs2Block(b *Block, miner Address, amount int) error {
 	mp.addMinerReward(miner, amount)
 
-	b.Transactions = mp.Transactions
-
-	// and make transaction pool Clean
-	mp.Clean()
-
+	for _, tx := range mp.Transactions {
+		b.Transactions = append(b.Transactions, tx.SnapShot())
+	}
 	return nil
 
 }

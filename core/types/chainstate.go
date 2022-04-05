@@ -21,7 +21,6 @@ type ChainState struct {
 func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 
 	utxos := []*UTXO{}
-
 	// delete spent Token
 	if !tx.IsCoinbase() {
 
@@ -29,7 +28,7 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 		for _, in := range tx.TxInputs {
 
 			for _, utxo := range u.Utxos[Account(Pub2Address(pk, false))] {
-				if in.Vout == utxo.Index {
+				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
 					fmt.Printf("One Token with %d Value deleted from %s UTXO Set in Pool UTXOSet\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 					continue
 				}
@@ -50,12 +49,12 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 	var pkh []byte
 	for index, out := range tx.TxOutputs {
 		if out.Value == 0 {
-			break
+			continue
 		}
 		pkh = out.PublicKeyHash
 		utxo := &UTXO{tx.TxID, uint(index), out}
 		u.Utxos[Account(Pub2Address(pkh, true))] = append(u.Utxos[Account(Pub2Address(pkh, true))], utxo)
-		fmt.Printf("One Token with %d value added for %s in Pool UTXOSet\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+		fmt.Printf("One Token with %d value added for %s in Pool UTXOSet from TX: %x\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true), tx.TxID)
 	}
 
 }
@@ -98,12 +97,11 @@ func (c *ChainState) Clean() {
 }
 
 // validate block's transactions
-// and if transaction is valid update in memory UTXO set
+// and if transaction is valid update in chainstate
 func (ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
 
 	tempChainstate := ch.SnapShot()
 	for _, tx := range b.Transactions {
-
 		if tx.IsCoinbase() {
 			tempChainstate.UpdateUtxoSet(tx)
 
@@ -123,20 +121,29 @@ func (ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
 // OP_EQUALVERIFY
 func (u *ChainState) Verifyhash(tx *Transaction) bool {
 	if !tx.IsCoinbase() {
+		checker := []int{}
+
+	IN:
 		for _, in := range tx.TxInputs {
 			pk := in.PublicKey
 			var pkh []byte
+
 			for _, utxo := range u.Utxos[Account(Pub2Address(pk, false))] {
-				if in.Vout == utxo.Index {
+				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
 					pkh = utxo.Txout.PublicKeyHash
-					break
+					if bytes.Equal(pkh, Hash160(pk)) {
+						checker = append(checker, 1)
+						continue IN
+					}
 				}
 			}
 
-			if !bytes.Equal(pkh, Hash160(pk)) {
-				return false
-			}
 		}
+
+		if len(checker) == len(tx.TxInputs) {
+			return true
+		}
+		return false
 	}
 
 	return true

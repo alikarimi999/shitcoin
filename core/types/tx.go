@@ -144,9 +144,13 @@ func (tx Transaction) TrimmeTX() *Transaction {
 	return txCopy
 }
 
+// deep copy of transaction
 func (tx *Transaction) SnapShot() *Transaction {
 
-	trx := &Transaction{}
+	trx := &Transaction{
+		Timestamp: tx.Timestamp,
+		TxID:      tx.TxID,
+	}
 
 	for _, in := range tx.TxInputs {
 		copy_in := *in

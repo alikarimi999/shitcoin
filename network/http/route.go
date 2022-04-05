@@ -160,6 +160,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
+		o.Ch.MemPool.Chainstate.Utxos = o.Ch.Chainstate.Utxos
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
@@ -171,7 +172,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		// Reciver is BroadBlock function
 		o.BroadChan <- mb
 
-		o.Ch.SyncUtxoSet()
+		o.Ch.SaveUtxoSet()
 
 	}
 

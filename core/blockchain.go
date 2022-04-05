@@ -41,6 +41,7 @@ func NewChain(path string, port int) (*Chain, error) {
 		LastBlock:   *types.NewBlock(),
 
 		MemPool: &types.MemPool{
+			Mu:           &sync.Mutex{},
 			Transactions: []*types.Transaction{},
 			Chainstate: &types.ChainState{
 				Mu:    &sync.Mutex{},
@@ -65,7 +66,7 @@ func NewChain(path string, port int) (*Chain, error) {
 	return c, nil
 }
 
-func (c *Chain) SyncUtxoSet() error {
+func (c *Chain) SaveUtxoSet() error {
 
 	saveUTXOsInDB(*c.MemPool.Chainstate)
 

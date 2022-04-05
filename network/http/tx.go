@@ -17,6 +17,7 @@ func (o *Objects) getTrx(ctx echo.Context) error {
 		log.Panic(err)
 	}
 
+	log.Printf("Transaction %x recieved\n", t.TxID)
 	err = c.AddTx2Pool(&t)
 	if err != nil {
 		return ctx.String(200, err.Error())

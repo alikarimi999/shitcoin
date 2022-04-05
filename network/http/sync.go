@@ -118,7 +118,7 @@ func Sync(c *core.Chain, n *types.Node) {
 		}
 		fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
 		c.AddBlockInDB(mb.Block, mb.Mu)
-		c.SyncUtxoSet()
+		c.SaveUtxoSet()
 
 		c.LastBlock = *mb.Block
 
@@ -379,7 +379,7 @@ func PairNode(c *core.Chain, dst string) error {
 	}
 	fmt.Printf("Genesis Block added to database\n")
 
-	c.SyncUtxoSet()
+	c.SaveUtxoSet()
 
 	err = ShareNode(c, dst, cl)
 	if err != nil {
