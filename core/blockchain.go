@@ -24,7 +24,7 @@ type Chain struct {
 	Chainstate  *types.ChainState
 	DB          database.Database
 	Engine      consensus.Engin
-	validator   Validator
+	Validator   Validator
 	MinerAdd    types.Address
 	KnownNodes  map[types.NodeID]*types.Node
 	DBPath      string
@@ -63,7 +63,7 @@ func NewChain(path string, port int) (*Chain, error) {
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
 	c.MemPool.Chainstate.DB = c.Chainstate.DB
-	c.validator = NewBlockValidator(c, pow.NewPowEngine())
+	c.Validator = NewBlockValidator(c, pow.NewPowEngine())
 
 	return c, nil
 }
