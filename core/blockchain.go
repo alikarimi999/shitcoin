@@ -24,13 +24,13 @@ type Chain struct {
 	Chainstate  *types.ChainState
 	DB          database.Database
 	Engine      consensus.Engin
-
-	MinerAdd   types.Address
-	KnownNodes map[types.NodeID]*types.Node
-	DBPath     string
-	Port       int
-	BlockChann chan *types.Block
-	MinedBlock chan *types.Block
+	validator   Validator
+	MinerAdd    types.Address
+	KnownNodes  map[types.NodeID]*types.Node
+	DBPath      string
+	Port        int
+	BlockChann  chan *types.Block
+	MinedBlock  chan *types.Block
 }
 
 func NewChain(path string, port int) (*Chain, error) {
@@ -63,6 +63,8 @@ func NewChain(path string, port int) (*Chain, error) {
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
 	c.MemPool.Chainstate.DB = c.Chainstate.DB
+	c.validator = NewBlockValidator(c, pow.NewPowEngine())
+
 	return c, nil
 }
 

@@ -15,6 +15,14 @@ type ChainState struct {
 	DB    database.Database
 }
 
+func NewChainState() *ChainState {
+	return &ChainState{
+		Mu:    &sync.Mutex{},
+		Utxos: make(map[Account][]*UTXO),
+		DB:    database.Database{},
+	}
+}
+
 // when node receive a transaction and verify it
 // then delete Tokens that used in inputs of transaction from it's utxo set
 // and add new Token of transaction to it's utxoset
@@ -98,24 +106,23 @@ func (c *ChainState) Clean() {
 
 // validate block's transactions
 // and if transaction is valid update in chainstate
-func (ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
+func (Ch *ChainState) Validate_blk_trx(b Block) (map[Account][]*UTXO, bool) {
 
-	tempChainstate := ch.SnapShot()
 	for _, tx := range b.Transactions {
 		if tx.IsCoinbase() {
-			tempChainstate.UpdateUtxoSet(tx)
+			Ch.UpdateUtxoSet(tx)
 
 			continue
 		}
 		trx := *tx
-		if !tempChainstate.Verifyhash(tx) || !trx.Checksig() {
+		if !Ch.Verifyhash(tx) || !trx.Checksig() {
 
 			return nil, false
 		}
-		tempChainstate.UpdateUtxoSet(tx)
+		Ch.UpdateUtxoSet(tx)
 	}
 
-	return tempChainstate.Utxos, true
+	return Ch.Utxos, true
 }
 
 // OP_EQUALVERIFY
@@ -150,6 +157,8 @@ func (u *ChainState) Verifyhash(tx *Transaction) bool {
 }
 
 func (c *ChainState) SnapShot() *ChainState {
+	c.Mu.Lock()
+	defer c.Mu.Unlock()
 	ch := &ChainState{
 		Mu:    &sync.Mutex{},
 		Utxos: make(map[Account][]*UTXO),

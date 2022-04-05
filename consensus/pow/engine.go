@@ -2,6 +2,7 @@ package pow
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"math"
 	"math/big"
@@ -93,17 +94,14 @@ search:
 	return false
 }
 
-func (pe *PowEngine) VerifyBlock(ch *types.ChainState, last_block types.Block) bool {
-
-	b := *pe.block
+func (pe *PowEngine) VerifyBlock(b *types.Block, ch *types.ChainState, last_block types.Block) bool {
 
 	if b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
 
-		if utxos, valid := ch.Validate_blk_trx(b); valid {
-			ch.Utxos = utxos
+		if _, valid := ch.Validate_blk_trx(*b); valid {
+			fmt.Println(valid)
 			return true
 		}
-
 		return false
 	}
 	return false

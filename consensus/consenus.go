@@ -8,7 +8,7 @@ type Engin interface {
 
 	// VerifyBlock checks whether a header conforms to the consensus rules of a
 	// given engine.
-	VerifyBlock(ch *types.ChainState, last_block types.Block) bool
+	VerifyBlock(b *types.Block, ch *types.ChainState, last_block types.Block) bool
 
 	// IsRunning checks whether consensus engine is searching for nonce or not
 	IsRunning() bool
