@@ -105,18 +105,20 @@ func Sync(c *core.Chain, n *types.Node) {
 		hash := bh[blockIndex(c.LastBlock.BH.BlockIndex+1)]
 
 		mb := getBlock(hash, types.NodeID(c.MinerAdd), n.FullAdd, cl)
-		if reflect.DeepEqual(mb, new(MsgBlock)) {
+		if reflect.DeepEqual(mb, NewMsgBlock()) {
 			break
 		}
 		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 		// check if block is valid
-		if BlockValidator(*mb.Block, c.MemPool.Chainstate, c.LastBlock) {
-			fmt.Printf("... Block %x is not valid\n", mb.Block.BH.BlockHash)
+		defer c.Validator.Reset()
+		if err := c.Validator.ValidateBlock(mb.Block, false); err != nil {
+			fmt.Println(err.Error())
 			break
 
 		}
 		fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
+		c.MemPool.Chainstate.Utxos = c.Validator.GetChainState().Utxos
 		c.AddBlockInDB(mb.Block, mb.Mu)
 		c.SaveUtxoSet()
 
@@ -152,6 +154,7 @@ func getBlock(hash []byte, nid types.NodeID, syncAddress string, cl http.Client)
 		fmt.Println(err.Error())
 		return mb
 	}
+	mb.Mu = &sync.Mutex{}
 	return mb
 
 }

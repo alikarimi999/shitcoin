@@ -1,7 +1,7 @@
 package core
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/alikarimi999/shitcoin/consensus"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -34,7 +34,7 @@ func (bv *BlockValidator) ValidateBlock(b *types.Block, db bool) error {
 	if bv.engine.VerifyBlock(b, bv.cs, bv.c.LastBlock) {
 		return nil
 	}
-	return errors.New("block is not valid")
+	return fmt.Errorf("block %x is not valid", b.BH.BlockHash)
 
 }
 

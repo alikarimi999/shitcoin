@@ -62,7 +62,7 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 		pkh = out.PublicKeyHash
 		utxo := &UTXO{tx.TxID, uint(index), out}
 		u.Utxos[Account(Pub2Address(pkh, true))] = append(u.Utxos[Account(Pub2Address(pkh, true))], utxo)
-		fmt.Printf("One Token with %d value added for %s in Pool UTXOSet from TX: %x\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true), tx.TxID)
+		fmt.Printf("One Token with %d value added for %s in Pool UTXOSet\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 	}
 
 }

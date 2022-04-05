@@ -28,7 +28,7 @@ type MsgBlock struct {
 
 func NewMsgBlock() *MsgBlock {
 	m := &MsgBlock{
-		Mu:    &sync.Mutex{},
+		Mu:    new(sync.Mutex),
 		Block: types.NewBlock(),
 	}
 	return m

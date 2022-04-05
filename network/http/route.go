@@ -136,7 +136,6 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 
 	o.Ch.Mu.Lock()
 	defer o.Ch.Mu.Unlock()
-	o.Ch.Chainstate.Loadchainstate()
 
 	if mb.Block.BH.BlockIndex > o.Ch.LastBlock.BH.BlockIndex+2 {
 		log.Println("Detecting a soft fork")
@@ -147,12 +146,12 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		// pause mining process that trying to mine this block
 		o.Ch.Engine.Pause()
 		log.Println("  Proccessing Block")
-
-		if !BlockValidator(*mb.Block, o.Ch.Chainstate, o.Ch.LastBlock) {
+		defer o.Ch.Validator.Reset()
+		if err := o.Ch.Validator.ValidateBlock(mb.Block, true); err != nil {
 			// resume paused mining process
 			o.Ch.Engine.Resume()
-			log.Printf("Block %x is not valid\n", mb.Block.BH.BlockHash)
-			return fmt.Errorf("block %x is not valid", mb.Block.BH.BlockHash)
+			log.Printf(err.Error())
+			return err
 
 		}
 		// stop mining process beacuse block mined by another node
@@ -160,7 +159,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		o.Ch.MemPool.Chainstate.Utxos = o.Ch.Chainstate.Utxos
+		o.Ch.MemPool.Chainstate.Utxos = o.Ch.Validator.GetChainState().Utxos
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
