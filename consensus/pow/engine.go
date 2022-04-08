@@ -2,7 +2,6 @@ package pow
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"math"
 	"math/big"
@@ -94,15 +93,18 @@ search:
 	return false
 }
 
-func (pe *PowEngine) VerifyBlock(b *types.Block, ch *types.ChainState, last_block types.Block) bool {
+func (pe *PowEngine) VerifyBlock(b *types.Block, s *types.UtxoSet, last_block types.Block) bool {
 
 	if b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
 
-		if _, valid := ch.Validate_blk_trx(*b); valid {
-			fmt.Println(valid)
-			return true
+		for _, tx := range b.Transactions {
+			account := types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
+			if !tx.IsValid(s.Tokens[account]) {
+				return false
+			}
+			s.UpdateUtxoSet(tx)
 		}
-		return false
+		return true
 	}
 	return false
 }

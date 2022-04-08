@@ -7,9 +7,9 @@ import (
 	"github.com/alikarimi999/shitcoin/database"
 )
 
-func Loadchain(dbPath string, port int) *Chain {
+func Loadchain(dbPath string, port int, miner []byte) *Chain {
 
-	c, _ := NewChain(dbPath, port)
+	c, _ := NewChain(dbPath, port, miner)
 	block := ReadLastBlock(c.DB)
 
 	if len(block.BH.BlockHash) == 0 {
@@ -21,7 +21,7 @@ func Loadchain(dbPath string, port int) *Chain {
 	c.ChainHeight = c.LastBlock.BH.BlockIndex + 1
 	fmt.Printf("ChainHeight is %d\nlast block index: %d\n", c.ChainHeight, c.LastBlock.BH.BlockIndex)
 
-	c.MemPool.Chainstate.Loadchainstate()
+	// TODO: load chainstate from database
 
 	return c
 

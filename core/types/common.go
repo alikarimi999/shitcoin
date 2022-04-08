@@ -4,8 +4,6 @@ type Chainid int
 
 type publickey []byte
 
-type txid []byte
-
 type Node struct {
 	NodeId NodeID
 	// Node full address

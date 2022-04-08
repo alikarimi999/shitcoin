@@ -5,3 +5,14 @@ type UTXO struct {
 	Index uint
 	Txout *TxOut
 }
+
+func (u *UTXO) SnapShot() *UTXO {
+
+	out := *u.Txout
+	ut := &UTXO{
+		Txid:  u.Txid,
+		Index: u.Index,
+		Txout: &out,
+	}
+	return ut
+}

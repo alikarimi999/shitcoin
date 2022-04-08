@@ -8,6 +8,16 @@ import (
 	"github.com/alikarimi999/shitcoin/core/types"
 )
 
+const (
+	minerReward int = 15
+)
+
+func MinerReward(miner types.Address, amount int) *types.Transaction {
+	pkh := types.Add2PKH(miner)
+	reward := types.CoinbaseTx(pkh, amount)
+	return reward
+}
+
 func (c *Chain) AddBlockInDB(b *types.Block, mu *sync.Mutex) {
 
 	// Saving valid block in database

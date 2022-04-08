@@ -26,7 +26,7 @@ func NewChainState() *ChainState {
 // when node receive a transaction and verify it
 // then delete Tokens that used in inputs of transaction from it's utxo set
 // and add new Token of transaction to it's utxoset
-func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
+func (cs *ChainState) UpdateUtxoSet(tx *Transaction) {
 
 	utxos := []*UTXO{}
 	// delete spent Token
@@ -35,7 +35,7 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 		pk := tx.TxInputs[0].PublicKey
 		for _, in := range tx.TxInputs {
 
-			for _, utxo := range u.Utxos[Account(Pub2Address(pk, false))] {
+			for _, utxo := range cs.Utxos[Account(Pub2Address(pk, false))] {
 				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
 					fmt.Printf("One Token with %d Value deleted from %s UTXO Set in Pool UTXOSet\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 					continue
@@ -45,9 +45,9 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 			}
 
 		}
-		u.Mu.Lock()
-		u.Utxos[Account(Pub2Address(pk, false))] = utxos
-		u.Mu.Unlock()
+		cs.Mu.Lock()
+		cs.Utxos[Account(Pub2Address(pk, false))] = utxos
+		cs.Mu.Unlock()
 
 		utxos = []*UTXO{}
 
@@ -61,7 +61,7 @@ func (u *ChainState) UpdateUtxoSet(tx *Transaction) {
 		}
 		pkh = out.PublicKeyHash
 		utxo := &UTXO{tx.TxID, uint(index), out}
-		u.Utxos[Account(Pub2Address(pkh, true))] = append(u.Utxos[Account(Pub2Address(pkh, true))], utxo)
+		cs.Utxos[Account(Pub2Address(pkh, true))] = append(cs.Utxos[Account(Pub2Address(pkh, true))], utxo)
 		fmt.Printf("One Token with %d value added for %s in Pool UTXOSet\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 	}
 

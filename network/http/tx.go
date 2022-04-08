@@ -1,6 +1,7 @@
 package network
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core"
@@ -9,7 +10,6 @@ import (
 )
 
 func (o *Objects) getTrx(ctx echo.Context) error {
-	c := o.Ch
 	var t types.Transaction
 	err := ctx.Bind(&t)
 
@@ -18,15 +18,22 @@ func (o *Objects) getTrx(ctx echo.Context) error {
 	}
 
 	log.Printf("Transaction %x recieved\n", t.TxID)
-	err = c.AddTx2Pool(&t)
-	if err != nil {
-		return ctx.String(200, err.Error())
+
+	if o.Ch.Validator.ValidateTX(&t) {
+		o.Ch.State.StateTransition(t.SnapShot(), false)
+		o.Ch.TxPool.UpdatePool(t.SnapShot(), false)
+		log.Printf("Transaction %x is valid\n", t.TxID)
+
+		// Broadcast transaction
+		BroadTrx(o.Ch, t)
+
+		ctx.String(200, fmt.Sprintf("Transaction added to MemPool\n"))
+		return nil
+
 	}
-
-	// Broadcast transaction
-	BroadTrx(o.Ch, t)
-
-	return ctx.String(200, "Transaction added to MemPool")
+	log.Printf("Transaction %x is not valid\n", t.TxID)
+	ctx.String(403, "")
+	return nil
 }
 
 func (o *Objects) sendUtxoset(ctx echo.Context) error {
@@ -42,7 +49,7 @@ func sendUtxoset(c *core.Chain, a types.Account) msgUTXOSet {
 
 	var s msgUTXOSet
 	s.Account = a
-	utxos := c.MemPool.Chainstate.Utxos[a]
+	utxos := c.State.GetTokens(a)
 
 	for _, utxo := range utxos {
 		// su := core.UTXO{utxo.Txid, utxo.Index, utxo.Txout}

@@ -16,70 +16,56 @@ const (
 )
 
 type Chain struct {
-	Mu          *sync.Mutex
+	Mu *sync.Mutex
+	Wg *sync.WaitGroup
+
 	ChainId     types.Chainid
 	ChainHeight uint64
 	LastBlock   types.Block
-	MemPool     *types.MemPool
-	Chainstate  *types.ChainState
+	TxPool      pool
+	State       chainstate
 	DB          database.Database
 	Engine      consensus.Engin
 	Validator   Validator
 	MinerAdd    types.Address
+	Miner       miner
 	KnownNodes  map[types.NodeID]*types.Node
 	DBPath      string
 	Port        int
-	BlockChann  chan *types.Block
 	MinedBlock  chan *types.Block
 }
 
-func NewChain(path string, port int) (*Chain, error) {
+func NewChain(path string, port int, miner []byte) (*Chain, error) {
 	c := &Chain{
-		Mu:          &sync.Mutex{},
+		Mu: &sync.Mutex{},
+		Wg: &sync.WaitGroup{},
+
 		ChainId:     0,
 		ChainHeight: 0,
 		LastBlock:   *types.NewBlock(),
 
-		MemPool: &types.MemPool{
-			Mu:           &sync.Mutex{},
-			Transactions: []*types.Transaction{},
-			Chainstate: &types.ChainState{
-				Mu:    &sync.Mutex{},
-				Utxos: make(map[types.Account][]*types.UTXO),
-			},
-		},
 		Engine: pow.NewPowEngine(),
-		Chainstate: &types.ChainState{
-			Mu:    &sync.Mutex{},
-			Utxos: make(map[types.Account][]*types.UTXO),
-		},
-		MinerAdd:   nil,
+
+		MinerAdd:   miner,
 		KnownNodes: make(map[types.NodeID]*types.Node),
 		DBPath:     path,
 		Port:       port,
-		BlockChann: make(chan *types.Block),
 		MinedBlock: make(chan *types.Block),
 	}
+
+	c.TxPool = NewTxPool(c)
+	c.State = NewState(filepath.Join(c.DBPath, "/chainstate"), c.Wg)
+	c.Miner = NewMiner(c)
+	c.Validator = NewValidator(c)
+
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
-	c.Chainstate.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
-	c.MemPool.Chainstate.DB = c.Chainstate.DB
-	c.Validator = NewBlockValidator(c, pow.NewPowEngine())
 
 	return c, nil
 }
 
-func (c *Chain) SaveUtxoSet() error {
-
-	saveUTXOsInDB(*c.MemPool.Chainstate)
-
+func (c *Chain) SetupChain() error {
+	c.creatGenesis()
 	return nil
-}
-
-func (c *Chain) SetupChain(miner types.Address, amount float64) error {
-
-	err := c.creatGenesis(miner, amount)
-
-	return err
 }
 
 func (c *Chain) NewNode() *types.Node {
@@ -93,11 +79,4 @@ func (c *Chain) NewNode() *types.Node {
 	}
 
 	return n
-}
-
-func (c *Chain) SnapShot() *Chain {
-	ch := c
-	ch.Chainstate = c.Chainstate.SnapShot()
-	ch.MemPool = c.MemPool.SnapShot()
-	return ch
 }

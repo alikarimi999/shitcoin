@@ -31,6 +31,35 @@ type TxIn struct {
 	Signature []byte
 }
 
+func (tx *Transaction) IsValid(u []*UTXO) bool {
+	if !tx.IsCoinbase() {
+		checker := []int{}
+
+	IN:
+		for _, in := range tx.TxInputs {
+			var pkh []byte
+
+			for _, utxo := range u {
+				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
+					pkh = utxo.Txout.PublicKeyHash
+					if bytes.Equal(pkh, Hash160(in.PublicKey)) {
+						checker = append(checker, 1)
+						continue IN
+					}
+				}
+			}
+
+		}
+
+		if len(checker) == len(tx.TxInputs) && tx.Checksig() {
+			return true
+		}
+		return false
+	}
+
+	return tx.Checksig()
+}
+
 func SerializeTxs(txs []*Transaction) []byte {
 
 	var result []byte

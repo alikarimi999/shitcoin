@@ -111,18 +111,15 @@ func Sync(c *core.Chain, n *types.Node) {
 		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
 
 		// check if block is valid
-		defer c.Validator.Reset()
-		if err := c.Validator.ValidateBlock(mb.Block, false); err != nil {
-			fmt.Println(err.Error())
-			break
+		if c.Validator.ValidateBlk(mb.Block) {
+			fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
+			go c.State.StateTransition(mb.Block.SnapShot, false)
+			go c.TxPool.UpdatePool(mb.Block.SnapShot, false)
+			c.AddBlockInDB(mb.Block, mb.Mu)
+
+			c.LastBlock = *mb.Block
 
 		}
-		fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
-		c.MemPool.Chainstate.Utxos = c.Validator.GetChainState().Utxos
-		c.AddBlockInDB(mb.Block, mb.Mu)
-		c.SaveUtxoSet()
-
-		c.LastBlock = *mb.Block
 
 	}
 	if c.ChainHeight == n.NodeHeight {
@@ -373,16 +370,12 @@ func PairNode(c *core.Chain, dst string) error {
 	c.LastBlock = *block
 	c.ChainHeight++
 
-	// Updating UTXO Set base on genesis block transaction
-	c.MemPool.Chainstate.UpdateUtxoSet(block.Transactions[0])
 	// Save Genesis block in database
 	err = core.SaveGenInDB(*block, &c.DB)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	fmt.Printf("Genesis Block added to database\n")
-
-	c.SaveUtxoSet()
 
 	err = ShareNode(c, dst, cl)
 	if err != nil {

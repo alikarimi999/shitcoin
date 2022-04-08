@@ -1,0 +1,85 @@
+package types
+
+import (
+	"bytes"
+	"fmt"
+	"sync"
+)
+
+type UtxoSet struct {
+	Mu     *sync.Mutex
+	Tokens map[Account][]*UTXO
+}
+
+func NewUtxoSet() *UtxoSet {
+	return &UtxoSet{
+		Mu:     &sync.Mutex{},
+		Tokens: make(map[Account][]*UTXO),
+	}
+}
+
+func (u *UtxoSet) SnapShot() *UtxoSet {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	us := &UtxoSet{
+		Mu:     &sync.Mutex{},
+		Tokens: make(map[Account][]*UTXO),
+	}
+
+	for a, utxos := range u.Tokens {
+		for _, ut := range utxos {
+			us.Tokens[a] = append(us.Tokens[a], ut.SnapShot())
+		}
+	}
+
+	return us
+}
+
+func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
+
+	utxos := []*UTXO{}
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	// delete spent Token
+	if !tx.IsCoinbase() {
+
+		pk := tx.TxInputs[0].PublicKey
+		for _, in := range tx.TxInputs {
+
+			for _, utxo := range u.Tokens[Account(Pub2Address(pk, false))] {
+				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
+					fmt.Printf("One Token with %d Value deleted from %s UTXO Set\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+					continue
+				}
+				utxos = append(utxos, utxo)
+
+			}
+
+		}
+		u.Tokens[Account(Pub2Address(pk, false))] = utxos
+
+		utxos = []*UTXO{}
+
+	}
+
+	// add new Token
+	var pkh []byte
+	for index, out := range tx.TxOutputs {
+		if out.Value == 0 {
+			continue
+		}
+		pkh = out.PublicKeyHash
+		utxo := &UTXO{
+			Txid:  tx.TxID,
+			Index: uint(index),
+			Txout: out,
+		}
+		u.Tokens[Account(Pub2Address(pkh, true))] = append(u.Tokens[Account(Pub2Address(pkh, true))], utxo)
+		fmt.Printf("One Token with %d value added for %s in UTXO Set\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+	}
+
+}
+
+func (u *UtxoSet) Clean() {
+	u = NewUtxoSet()
+}

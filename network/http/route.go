@@ -138,7 +138,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 	defer o.Ch.Mu.Unlock()
 
 	if mb.Block.BH.BlockIndex > o.Ch.LastBlock.BH.BlockIndex+2 {
-		log.Println("Detecting a soft fork")
+		log.Println("Detecting fork")
 		return nil
 	}
 
@@ -146,8 +146,8 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		// pause mining process that trying to mine this block
 		o.Ch.Engine.Pause()
 		log.Println("  Proccessing Block")
-		defer o.Ch.Validator.Reset()
-		if err := o.Ch.Validator.ValidateBlock(mb.Block, true); err != nil {
+
+		if !o.Ch.Validator.ValidateBlk(mb.Block) {
 			// resume paused mining process
 			o.Ch.Engine.Resume()
 			log.Printf(err.Error())
@@ -159,7 +159,9 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		o.Ch.MemPool.Chainstate.Utxos = o.Ch.Validator.GetChainState().Utxos
+		go o.Ch.State.StateTransition(mb.Block.SnapShot, false)
+		go o.Ch.TxPool.UpdatePool(mb.Block.SnapShot, false)
+
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++
 		// Update NodeHeight of sender in KnownNodes
@@ -170,8 +172,6 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		// Broadcasting valid new Mined block in network
 		// Reciver is BroadBlock function
 		o.BroadChan <- mb
-
-		o.Ch.SaveUtxoSet()
 
 	}
 
