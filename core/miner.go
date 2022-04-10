@@ -38,9 +38,8 @@ func (m *Miner) Handler() {
 		m.c.Mu.Lock()
 		b.BH.BlockIndex = m.c.ChainHeight
 		b.BH.PrevHash = m.c.LastBlock.BH.BlockHash
-		m.c.Mu.Unlock()
-
 		b.BH.Miner = m.c.MinerAdd
+		m.c.Mu.Unlock()
 
 		if m.c.Engine.Start(b) {
 			log.Printf("Block %d with hash %x with %d transations Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
@@ -50,10 +49,11 @@ func (m *Miner) Handler() {
 
 			m.c.Mu.Lock()
 			m.c.ChainHeight++
+			log.Printf("chain height is %d\n", m.c.ChainHeight)
 			m.c.LastBlock = *b
 			m.c.Mu.Unlock()
 
-			go m.c.State.StateTransition(b, true)
+			go m.c.ChainState.StateTransition(b, true)
 			go m.c.TxPool.UpdatePool(b, true)
 			err := b.SaveBlockInDB(&m.c.DB, &sync.Mutex{})
 			if err != nil {
@@ -69,13 +69,14 @@ func (m *Miner) Start(txs []*types.Transaction) {
 
 	b := types.NewBlock()
 	tx := MinerReward(m.c.MinerAdd, minerReward)
-	m.c.State.StateTransition(tx.SnapShot(), false)
-	m.c.TxPool.UpdatePool(tx.SnapShot(), false)
+	m.c.ChainState.StateTransition(tx.SnapShot(), false)
 	b.Transactions = append(b.Transactions, tx)
 	for _, tx := range txs {
 		b.Transactions = append(b.Transactions, tx)
 	}
 
-	m.c.State.MineStarted(true)
 	m.blockCh <- b
+	m.c.ChainState.MineStarted(true)
+	m.c.TxPool.UpdatePool(tx.SnapShot(), false)
+
 }

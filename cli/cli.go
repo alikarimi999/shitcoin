@@ -84,7 +84,7 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 		log.Fatalln(err)
 	}
 
-	go c.State.Handler()
+	go c.ChainState.Handler()
 	go c.TxPool.Handler()
 	go c.Miner.Handler()
 

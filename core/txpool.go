@@ -58,34 +58,25 @@ func (tp *TxPool) Handler() {
 		case tx := <-tp.queueCh: // recieve from network
 			tp.queueTxs[txid(tx.TxID)] = tx
 			if tp.queIsFull() {
-				go func() {
-					tp.Mu.Lock()
-					defer tp.Mu.Unlock()
-					tp.pendingTxs = tp.queueTxs
-					tp.c.Miner.Start(tp.queueTxs.convert())
-					tp.queueTxs.clean()
+				tp.pendingTxs = tp.queueTxs
+				go tp.c.Miner.Start(tp.queueTxs.convert())
+				tp.queueTxs = make(Transactions)
 
-					select {
-					case local := <-tp.minedLocal:
-						if local {
-							tp.Mu.Lock()
-							defer tp.Mu.Unlock()
-							tp.pendingTxs.clean()
-							return
-						}
+			}
+		case local := <-tp.minedLocal:
+			if tp.c.ChainHeight == 1 { // for genesis block
+				tp.queueTxs = make(Transactions)
 
-					default:
-						go func() {
-							tp.Mu.Lock()
-							defer tp.Mu.Unlock()
-							tp.sealedTxs = <-tp.sealCh
-							tp.manageTxs()
-						}()
-					}
-				}()
+			}
+			if local {
+				tp.pendingTxs = make(Transactions)
+
 			}
 
+		case tp.sealedTxs = <-tp.sealCh:
+			tp.manageTxs()
 		}
+
 	}
 }
 
@@ -104,7 +95,7 @@ func (tp *TxPool) manageTxs() {
 		tp.queueTxs[txid] = tx
 	}
 
-	tp.pendingTxs.clean()
+	tp.pendingTxs = make(Transactions)
 
 }
 
@@ -137,10 +128,6 @@ func (t Transactions) convert() []*types.Transaction {
 		txs = append(txs, tx)
 	}
 	return txs
-}
-
-func (t Transactions) clean() {
-	t = make(Transactions)
 }
 
 func newTransations(txs []*types.Transaction) Transactions {

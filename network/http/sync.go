@@ -113,7 +113,7 @@ func Sync(c *core.Chain, n *types.Node) {
 		// check if block is valid
 		if c.Validator.ValidateBlk(mb.Block) {
 			fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
-			go c.State.StateTransition(mb.Block.SnapShot, false)
+			go c.ChainState.StateTransition(mb.Block.SnapShot, false)
 			go c.TxPool.UpdatePool(mb.Block.SnapShot, false)
 			c.AddBlockInDB(mb.Block, mb.Mu)
 

@@ -37,28 +37,24 @@ func (u *UtxoSet) SnapShot() *UtxoSet {
 
 func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 
-	utxos := []*UTXO{}
 	u.Mu.Lock()
 	defer u.Mu.Unlock()
 	// delete spent Token
 	if !tx.IsCoinbase() {
 
 		pk := tx.TxInputs[0].PublicKey
+		account := Account(Pub2Address(pk, false))
 		for _, in := range tx.TxInputs {
 
-			for _, utxo := range u.Tokens[Account(Pub2Address(pk, false))] {
+			for i, utxo := range u.Tokens[account] {
 				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
-					fmt.Printf("One Token with %d Value deleted from %s UTXO Set\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+					u.Tokens[account] = append(u.Tokens[account][:i], u.Tokens[account][i+1:]...)
+					fmt.Printf("One Token with %d Value deleted from %s\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 					continue
 				}
-				utxos = append(utxos, utxo)
-
 			}
 
 		}
-		u.Tokens[Account(Pub2Address(pk, false))] = utxos
-
-		utxos = []*UTXO{}
 
 	}
 
@@ -78,8 +74,4 @@ func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 		fmt.Printf("One Token with %d value added for %s in UTXO Set\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 	}
 
-}
-
-func (u *UtxoSet) Clean() {
-	u = NewUtxoSet()
 }

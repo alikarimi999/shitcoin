@@ -16,7 +16,7 @@ const (
 
 type msgUTXOSet struct {
 	Account types.Account `json:"account"`
-	Utxos   []types.UTXO  `json:"utxos"`
+	Utxos   []*types.UTXO `json:"utxos"`
 }
 
 type MsgBlock struct {

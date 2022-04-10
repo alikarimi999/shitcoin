@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -44,27 +43,6 @@ func ReadBlock(d database.Database, hash []byte) *types.Block {
 	}
 
 	return nil
-}
-
-func saveUTXOsInDB(u types.ChainState) error {
-
-	u.Mu.Lock()
-	defer u.Mu.Unlock()
-
-	for account, utxos := range u.Utxos {
-		key := []byte(account)
-		value := Serialize(utxos)
-
-		err := u.DB.DB.Put(key, value, nil)
-
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Printf("All Tokens for %s saved in database\n\n", account)
-
-	}
-	return nil
-
 }
 
 func Serialize(t interface{}) []byte {

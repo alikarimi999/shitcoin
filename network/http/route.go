@@ -159,7 +159,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		go o.Ch.State.StateTransition(mb.Block.SnapShot, false)
+		go o.Ch.ChainState.StateTransition(mb.Block.SnapShot, false)
 		go o.Ch.TxPool.UpdatePool(mb.Block.SnapShot, false)
 
 		o.Ch.LastBlock = *mb.Block

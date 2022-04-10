@@ -22,12 +22,12 @@ type chainstate interface {
 }
 
 type stateTransmitter struct {
-	TXs       []*types.Transaction
-	fromBlock bool // it shows transactions come from a mined block or just recieved from network
-	local     bool
+	TXs   []*types.Transaction
+	local bool
 }
 
 type State struct {
+	mu *sync.Mutex
 	wg *sync.WaitGroup
 
 	memSet     *types.UtxoSet // temperory chain state
@@ -42,6 +42,7 @@ type State struct {
 
 func NewState(dbPath string, wg *sync.WaitGroup) *State {
 	s := &State{
+		mu:             &sync.Mutex{},
 		wg:             wg,
 		memSet:         types.NewUtxoSet(),
 		stableSet:      types.NewUtxoSet(),
@@ -62,36 +63,51 @@ func (s *State) Handler() {
 	for {
 		select {
 		case t := <-s.transportBlkCh:
-			if t.fromBlock {
-				if !t.local {
-					for _, tx := range t.TXs {
-						s.stableSet.UpdateUtxoSet(tx)
-					}
-					s.memSet = s.stableSet
-				} else {
-					s.stableSet = s.pendingSet
-					s.pendingSet.Clean()
+			s.mu.Lock()
+			if !t.local {
+				for _, tx := range t.TXs {
+					s.stableSet.UpdateUtxoSet(tx)
 				}
-				go s.saveInDB()
+			} else {
+				s.stableSet.Tokens = s.pendingSet.Tokens
+				s.pendingSet.Tokens = make(map[types.Account][]*types.UTXO)
 			}
-
+			s.saveInDB()
+			s.mu.Unlock()
 		case t := <-s.transportTxCh:
+			s.mu.Lock()
 			for _, tx := range t.TXs {
 				s.memSet.UpdateUtxoSet(tx)
 			}
+			s.mu.Unlock()
 		case <-s.startmineCh:
-			s.pendingSet = s.memSet
-			s.memSet.Clean()
+			s.mu.Lock()
+			s.pendingSet.Tokens = s.memSet.Tokens
+			s.memSet.Tokens = make(map[types.Account][]*types.UTXO)
+			s.mu.Unlock()
 
 		}
 	}
 }
 
 func (s *State) GetTokens(account types.Account) []*types.UTXO {
-	return s.memSet.Tokens[account]
+
+	s.mu.Lock()
+	s.memSet.Mu.Lock()
+	defer s.memSet.Mu.Unlock()
+	defer s.mu.Unlock()
+	utxos := []*types.UTXO{}
+
+	for _, utxo := range s.memSet.Tokens[account] {
+		utxos = append(utxos, utxo.SnapShot())
+	}
+
+	return utxos
 }
 
 func (s *State) GetStableSet() *types.UtxoSet {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.stableSet.SnapShot()
 }
 
@@ -99,7 +115,7 @@ func (s *State) StateTransition(o any, local bool) {
 
 	switch t := o.(type) {
 	case *types.Block:
-		st := &stateTransmitter{fromBlock: true, local: local}
+		st := &stateTransmitter{local: local}
 		if !local {
 			for _, tx := range t.Transactions {
 				st.TXs = append(st.TXs, tx)
@@ -108,7 +124,7 @@ func (s *State) StateTransition(o any, local bool) {
 		s.transportBlkCh <- st
 		return
 	case *types.Transaction:
-		st := &stateTransmitter{fromBlock: false}
+		st := &stateTransmitter{}
 		st.TXs = append(st.TXs, t)
 		s.transportTxCh <- st
 		return
@@ -118,8 +134,7 @@ func (s *State) StateTransition(o any, local bool) {
 }
 
 func (s *State) saveInDB() {
-	s.stableSet.Mu.Lock()
-	defer s.stableSet.Mu.Unlock()
+
 	for account, utxos := range s.stableSet.Tokens {
 		key := []byte(account)
 		value := Serialize(utxos)
@@ -132,6 +147,8 @@ func (s *State) saveInDB() {
 		fmt.Printf("All Tokens for %s saved in database\n\n", account)
 
 	}
+	s.memSet.Tokens = s.stableSet.Tokens
+	s.stableSet.Tokens = make(map[types.Account][]*types.UTXO)
 
 }
 

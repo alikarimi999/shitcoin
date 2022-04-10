@@ -23,7 +23,7 @@ type Chain struct {
 	ChainHeight uint64
 	LastBlock   types.Block
 	TxPool      pool
-	State       chainstate
+	ChainState  chainstate
 	DB          database.Database
 	Engine      consensus.Engin
 	Validator   Validator
@@ -54,7 +54,7 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 	}
 
 	c.TxPool = NewTxPool(c)
-	c.State = NewState(filepath.Join(c.DBPath, "/chainstate"), c.Wg)
+	c.ChainState = NewState(filepath.Join(c.DBPath, "/chainstate"), c.Wg)
 	c.Miner = NewMiner(c)
 	c.Validator = NewValidator(c)
 
