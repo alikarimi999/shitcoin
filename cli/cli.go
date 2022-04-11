@@ -107,7 +107,15 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 
 func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath string) {
 
-	c := core.Loadchain(dbPath, port, miner)
+	c, err := core.Loadchain(dbPath, port, miner)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	go c.ChainState.Handler()
+	go c.TxPool.Handler()
+	go c.Miner.Handler()
+
 	o := &network.Objects{
 		Mu:        sync.Mutex{},
 		Ch:        c,
@@ -118,16 +126,11 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 
 	go network.RunServer(o, port)
 
-	err := network.PairNode(c, node)
+	err = network.PairNode(c, node)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-	go o.IBD(wg)
-
-	wg.Wait()
+	c.Wg.Wait()
 
 }

@@ -230,7 +230,7 @@ func (o *Objects) SendInv(ctx echo.Context) error {
 func (o *Objects) SendGen(ctx echo.Context) error {
 
 	hash, err := o.Ch.DB.DB.Get([]byte("genesis_block"), nil)
-	fmt.Printf("\nNode%s wants genesis block \n", ctx.RealIP())
+	fmt.Printf("\nHash: %x \n", hash)
 
 	if err != nil {
 		return err

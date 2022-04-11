@@ -3,6 +3,7 @@ package core
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 )
@@ -17,18 +18,24 @@ type pool interface {
 	// if block mined by this node local must set true
 	UpdatePool(o any, local bool)
 	Handler()
+	ContinueHandler(cont bool)
+	GetWaitGroup() *sync.WaitGroup
 }
 
 type TxPool struct {
-	Mu         *sync.Mutex
-	c          *Chain
-	wg         *sync.WaitGroup
+	Mu *sync.Mutex
+	c  *Chain
+	wg *sync.WaitGroup
+
+	WG         *sync.WaitGroup
 	queueTxs   Transactions // verified transactions that recieved and didn't add to any block yet
 	pendingTxs Transactions // verified transactions that are in mining block
 	sealedTxs  Transactions // verified transactions that sealed in mining process
 
 	queueCh    chan *types.Transaction
 	sealCh     chan Transactions
+	continueCh chan struct{}
+
 	minedLocal chan bool
 }
 
@@ -37,12 +44,14 @@ func NewTxPool(c *Chain) *TxPool {
 		Mu:         &sync.Mutex{},
 		c:          c,
 		wg:         c.Wg,
+		WG:         &sync.WaitGroup{},
 		queueTxs:   make(Transactions),
 		pendingTxs: make(Transactions),
 		sealedTxs:  make(Transactions),
 		queueCh:    make(chan *types.Transaction),
 		sealCh:     make(chan Transactions),
-		minedLocal: make(chan bool),
+		continueCh: make(chan struct{}),
+		minedLocal: make(chan bool, 1),
 	}
 
 	return t
@@ -56,15 +65,29 @@ func (tp *TxPool) Handler() {
 	for {
 		select {
 		case tx := <-tp.queueCh: // recieve from network
-			tp.queueTxs[txid(tx.TxID)] = tx
+			tp.queueTxs[txid(tx.TxID)] = tx.SnapShot()
+			tp.c.ChainState.StateTransition(tx, false)
 			if tp.queIsFull() {
 				tp.pendingTxs = tp.queueTxs
-				go tp.c.Miner.Start(tp.queueTxs.convert())
 				tp.queueTxs = make(Transactions)
+				// creat miner reward transaction
+				mtx := MinerReward(tp.c.MinerAdd, minerReward)
+				tp.c.ChainState.StateTransition(mtx, false)
+				tp.pendingTxs[txid(mtx.TxID)] = mtx
+
+				// wait untile Mining proccess done
+				tp.WG.Wait()
+				// notify chainstate handler that mining process is going to start
+				tp.c.ChainState.MinerIsStarting(true)
+
+				<-tp.continueCh // wait for ChainState Handler until take a snapshot of memSet
+
+				// start mining process
+				tp.c.Miner.Start(tp.pendingTxs.convert(), tp.WG)
 
 			}
 		case local := <-tp.minedLocal:
-			if tp.c.ChainHeight == 1 { // for genesis block
+			if atomic.LoadUint64(&tp.c.ChainHeight) == 1 { // for genesis block
 				tp.queueTxs = make(Transactions)
 
 			}
@@ -97,6 +120,12 @@ func (tp *TxPool) manageTxs() {
 
 	tp.pendingTxs = make(Transactions)
 
+}
+
+func (tp *TxPool) ContinueHandler(cont bool) {
+	if cont {
+		tp.continueCh <- struct{}{}
+	}
 }
 
 // this function add transactions that added to mined block that recieved from other nodes
@@ -138,4 +167,8 @@ func newTransations(txs []*types.Transaction) Transactions {
 	}
 
 	return t
+}
+
+func (tp *TxPool) GetWaitGroup() *sync.WaitGroup {
+	return tp.WG
 }

@@ -54,7 +54,7 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 	}
 
 	c.TxPool = NewTxPool(c)
-	c.ChainState = NewState(filepath.Join(c.DBPath, "/chainstate"), c.Wg)
+	c.ChainState = NewState(c)
 	c.Miner = NewMiner(c)
 	c.Validator = NewValidator(c)
 

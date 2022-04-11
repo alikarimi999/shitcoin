@@ -7,14 +7,14 @@ import (
 	"github.com/alikarimi999/shitcoin/database"
 )
 
-func Loadchain(dbPath string, port int, miner []byte) *Chain {
+func Loadchain(dbPath string, port int, miner []byte) (*Chain, error) {
 
-	c, _ := NewChain(dbPath, port, miner)
+	c, err := NewChain(dbPath, port, miner)
 	block := ReadLastBlock(c.DB)
 
 	if len(block.BH.BlockHash) == 0 {
 		fmt.Println("There is no block in database")
-		return c
+		return c, err
 	}
 
 	c.LastBlock = *block
@@ -23,7 +23,7 @@ func Loadchain(dbPath string, port int, miner []byte) *Chain {
 
 	// TODO: load chainstate from database
 
-	return c
+	return c, err
 
 }
 

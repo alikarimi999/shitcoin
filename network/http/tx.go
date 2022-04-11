@@ -19,7 +19,6 @@ func (o *Objects) getTrx(ctx echo.Context) error {
 	log.Printf("Transaction %x recieved\n", t.TxID)
 
 	if o.Ch.Validator.ValidateTX(&t) {
-		o.Ch.ChainState.StateTransition(t.SnapShot(), false)
 		o.Ch.TxPool.UpdatePool(t.SnapShot(), false)
 		log.Printf("Transaction %x is valid\n", t.TxID)
 
@@ -31,7 +30,7 @@ func (o *Objects) getTrx(ctx echo.Context) error {
 
 	}
 	log.Printf("Transaction %x is not valid\n", t.TxID)
-	ctx.String(403, "")
+	ctx.String(200, "Transaction is not valid")
 	return nil
 }
 

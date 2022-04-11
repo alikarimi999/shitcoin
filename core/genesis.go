@@ -10,7 +10,14 @@ import (
 
 // Creat genesis Block
 func (c *Chain) creatGenesis() {
-	c.Miner.Start([]*types.Transaction{})
+
+	pkh := types.Add2PKH(c.MinerAdd)
+	tx := types.CoinbaseTx(pkh, 15)
+
+	c.ChainState.StateTransition(tx.SnapShot(), false)
+	c.ChainState.MinerIsStarting(true)
+
+	c.Miner.Start([]*types.Transaction{tx}, c.TxPool.GetWaitGroup())
 }
 
 func SaveGenInDB(b types.Block, d *database.Database) error {
