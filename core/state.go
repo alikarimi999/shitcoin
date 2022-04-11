@@ -92,21 +92,11 @@ func (s *State) Handler() {
 			if !t.local {
 				for _, tx := range t.TXs {
 					s.stableSet.UpdateUtxoSet(tx)
+					s.memSet = ConvertStable2Mem(s.stableSet)
 				}
 			} else {
-
-				for a, utxos := range s.memSetSnapshot.Tokens {
-					var acc int
-					for _, utxo := range utxos {
-						acc += utxo.utxo.Txout.Value
-					}
-
-					fmt.Printf("Len 2 >>>> %s >> %d  acc is %d\n", a, len(utxos), acc)
-				}
-
 				s.stableSet = s.memSetSnapshot.ConvertMem2Stable()
 				s.memSetSnapshot.Tokens = make(map[types.Account][]*tmpUtxo)
-
 			}
 			s.saveInDB()
 			s.memSet.SyncMemSet(s.stableSet.Tokens)
@@ -120,14 +110,7 @@ func (s *State) Handler() {
 		case <-s.minerstartingCh:
 			s.mu.Lock()
 			s.memSetSnapshot = s.memSet.SnapShot()
-			for a, utxos := range s.memSetSnapshot.Tokens {
-				var acc int
-				for _, utxo := range utxos {
-					acc += utxo.utxo.Txout.Value
-				}
 
-				fmt.Printf("Len 1 >>>> %s >> %d  acc is %d\n", a, len(utxos), acc)
-			}
 			if atomic.LoadUint64(&s.c.ChainHeight) > 0 { // if is not for genesis blockCh
 				s.c.TxPool.ContinueHandler(true)
 			}
@@ -186,6 +169,7 @@ func (s *State) StateTransition(o any, local bool) {
 				st.TXs = append(st.TXs, tx)
 			}
 		}
+
 		s.transportBlkCh <- st
 		return
 	case *types.Transaction:

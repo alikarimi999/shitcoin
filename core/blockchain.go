@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -29,10 +28,12 @@ type Chain struct {
 	Validator   Validator
 	MinerAdd    types.Address
 	Miner       miner
-	KnownNodes  map[types.NodeID]*types.Node
-	DBPath      string
-	Port        int
-	MinedBlock  chan *types.Block
+
+	NMU        *sync.Mutex // nodes mutex
+	KnownNodes map[types.NodeID]*types.Node
+	DBPath     string
+	Port       int
+	MinedBlock chan *types.Block
 }
 
 func NewChain(path string, port int, miner []byte) (*Chain, error) {
@@ -47,6 +48,7 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 		Engine: pow.NewPowEngine(),
 
 		MinerAdd:   miner,
+		NMU:        &sync.Mutex{},
 		KnownNodes: make(map[types.NodeID]*types.Node),
 		DBPath:     path,
 		Port:       port,
@@ -66,17 +68,4 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 func (c *Chain) SetupChain() error {
 	c.creatGenesis()
 	return nil
-}
-
-func (c *Chain) NewNode() *types.Node {
-
-	n := &types.Node{
-		NodeId:     types.NodeID(c.MinerAdd),
-		FullAdd:    "",
-		Port:       fmt.Sprintf(":%d", c.Port),
-		LastHash:   c.LastBlock.BH.BlockHash,
-		NodeHeight: c.ChainHeight,
-	}
-
-	return n
 }

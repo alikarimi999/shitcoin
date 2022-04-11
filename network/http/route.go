@@ -43,7 +43,7 @@ func RunServer(o *Objects, port int) {
 }
 
 func (o *Objects) SendNodeInfo(ctx echo.Context) error {
-	node := o.Ch.NewNode()
+	node := types.ThisNode(o.Ch.MinerAdd, o.Ch.Port, o.Ch.LastBlock.BH.BlockHash, o.Ch.ChainHeight)
 	err := ctx.Bind(node)
 	if err != nil {
 		return err
@@ -65,7 +65,8 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 	gn.SrcNodes[0].FullAdd = sender
 	fmt.Printf("Node %s with Address %s Requesitng new node\n", gn.SrcNodes[0].NodeId, gn.SrcNodes[0].FullAdd)
 
-	gn.ShareNodes = sendNode(o.Ch, gn.SrcNodes, senderID)
+	o.Ch.NMU.Lock()
+	gn.ShareNodes = collectNodes(o.Ch, gn.SrcNodes, senderID)
 
 	for _, n := range gn.SrcNodes {
 		if len(o.Ch.KnownNodes) >= MaxKnownNodes {
@@ -84,16 +85,16 @@ func (o *Objects) SendNodes(ctx echo.Context) error {
 			o.Ch.Mu.Unlock()
 		}
 	}
-
+	defer o.Ch.NMU.Unlock()
 	ctx.JSONPretty(200, gn, " ")
 	return nil
 }
 
-func sendNode(c *core.Chain, src []*types.Node, sender types.NodeID) []*types.Node {
+func collectNodes(c *core.Chain, src []*types.Node, sender types.NodeID) []*types.Node {
 	share_nodes := []*types.Node{}
 
 	// first node that any node share to other nodes refers to itself
-	n := c.NewNode()
+	n := types.ThisNode(c.MinerAdd, c.Port, c.LastBlock.BH.BlockHash, c.ChainHeight)
 	share_nodes = append(share_nodes, n)
 	fmt.Printf("...Sending Node %s\n", n.NodeId)
 
@@ -150,7 +151,7 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		if !o.Ch.Validator.ValidateBlk(mb.Block) {
 			// resume paused mining process
 			o.Ch.Engine.Resume()
-			log.Printf(err.Error())
+			log.Printf("Block %x is not Valid\n", mb.Block.BH.BlockHash)
 			return err
 
 		}
@@ -159,8 +160,8 @@ func (o *Objects) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		go o.Ch.ChainState.StateTransition(mb.Block.SnapShot, false)
-		go o.Ch.TxPool.UpdatePool(mb.Block.SnapShot, false)
+		go o.Ch.ChainState.StateTransition(mb.Block, false)
+		go o.Ch.TxPool.UpdatePool(mb.Block, false)
 
 		o.Ch.LastBlock = *mb.Block
 		o.Ch.ChainHeight++

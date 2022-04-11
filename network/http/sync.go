@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
@@ -218,7 +219,7 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 	src_nodes := []*types.Node{}
 
 	// first element in slice always refer to node itself
-	src_nodes = append(src_nodes, c.NewNode())
+	src_nodes = append(src_nodes, types.ThisNode(c.MinerAdd, c.Port, c.LastBlock.BH.BlockHash, c.ChainHeight))
 
 	for _, n := range c.KnownNodes {
 		src_nodes = append(src_nodes, n)
@@ -226,7 +227,7 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 	gn := &GetNode{src_nodes, nil}
 
 	b, _ := json.Marshal(gn)
-	resp, err := cl.Post(fmt.Sprintf("%s/getnode", dst), "application/json", bytes.NewReader(b))
+	resp, err := http.Post(fmt.Sprintf("%s/getnode", dst), "application/json", bytes.NewReader(b))
 	if err != nil {
 		fmt.Println(err.Error())
 		return src_nodes
@@ -368,7 +369,10 @@ func PairNode(c *core.Chain, dst string) error {
 	block := getGen(node.FullAdd, cl)
 
 	c.LastBlock = *block
-	c.ChainHeight++
+	atomic.AddUint64(&c.ChainHeight, 1)
+
+	c.TxPool.UpdatePool(block, false)
+	c.ChainState.StateTransition(block, false)
 
 	// Save Genesis block in database
 	err = core.SaveGenInDB(*block, &c.DB)
@@ -412,7 +416,10 @@ func (o *Objects) BroadMinedBlock() {
 			Miner:  o.Ch.MinerAdd,
 		}
 
-		for _, node := range o.Ch.KnownNodes {
+		o.Ch.NMU.Lock()
+		nodes := o.Ch.KnownNodes
+
+		for _, node := range nodes {
 			// dont send to miner of block or sender
 			if mb.Sender == node.NodeId || types.NodeID(mb.Miner) == node.NodeId {
 				continue
@@ -422,6 +429,7 @@ func (o *Objects) BroadMinedBlock() {
 			log.Printf("Sending New Mined block %d: %x to %s\n", block.BH.BlockIndex, block.BH.BlockHash, node.NodeId)
 			o.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
 		}
+		o.Ch.NMU.Unlock()
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Difficulty uint64 = 14
+	Difficulty uint64 = 10
 )
 
 // PowEngine is a consensus engine based on proof-of-work alghorithm
@@ -95,10 +95,16 @@ search:
 
 func (pe *PowEngine) VerifyBlock(b *types.Block, s *types.UtxoSet, last_block types.Block) bool {
 
+	// fmt.Println(b.BH.BlockIndex-1 == last_block.BH.BlockIndex, bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash), b.Validate_hash())
 	if b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
 
 		for _, tx := range b.Transactions {
-			account := types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
+			var account types.Account
+			if tx.IsCoinbase() {
+				account = types.Account(types.Pub2Address(tx.TxOutputs[0].PublicKeyHash, true))
+			} else {
+				account = types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
+			}
 			if !tx.IsValid(s.Tokens[account]) {
 				return false
 			}
@@ -117,6 +123,7 @@ func (pe *PowEngine) Start(b *types.Block) bool {
 	if !pe.IsRunning() {
 		atomic.StoreInt32(&pe.running, 1)
 		pe.block = b
+		// time.Sleep(3 * time.Second)
 		return pe.mine()
 	}
 	return false
