@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/alikarimi999/shitcoin/config"
 	"github.com/alikarimi999/shitcoin/consensus"
 	"github.com/alikarimi999/shitcoin/consensus/pow"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -19,6 +20,8 @@ type Chain struct {
 	Wg *sync.WaitGroup
 
 	ChainId     types.Chainid
+	Node        *types.Node
+	Config      config.Config
 	ChainHeight uint64
 	LastBlock   types.Block
 	TxPool      pool
@@ -30,7 +33,7 @@ type Chain struct {
 	Miner       miner
 
 	NMU        *sync.Mutex // nodes mutex
-	KnownNodes map[types.NodeID]*types.Node
+	KnownNodes map[string]*types.Node
 	DBPath     string
 	Port       int
 	MinedBlock chan *types.Block
@@ -49,18 +52,20 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 
 		MinerAdd:   miner,
 		NMU:        &sync.Mutex{},
-		KnownNodes: make(map[types.NodeID]*types.Node),
+		KnownNodes: make(map[string]*types.Node),
 		DBPath:     path,
 		Port:       port,
 		MinedBlock: make(chan *types.Block),
 	}
 
+	// TODO: add to NodeHeight after adding a new mined block to chain
 	c.TxPool = NewTxPool(c)
 	c.ChainState = NewState(c)
 	c.Miner = NewMiner(c)
 	c.Validator = NewValidator(c)
-
+	c.Config = config.NewConfig(filepath.Join(c.DBPath, "/config.yaml"))
 	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
+	c.Node = types.NewNode(c.Config, c.Port, c.LastBlock.BH.BlockHash, c.ChainHeight)
 
 	return c, nil
 }

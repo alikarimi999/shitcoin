@@ -20,6 +20,8 @@ type pool interface {
 	Handler()
 	ContinueHandler(cont bool)
 	GetWaitGroup() *sync.WaitGroup
+	GetQueue() []*types.Transaction
+	GetPending() []*types.Transaction
 }
 
 type TxPool struct {
@@ -171,4 +173,12 @@ func newTransations(txs []*types.Transaction) Transactions {
 
 func (tp *TxPool) GetWaitGroup() *sync.WaitGroup {
 	return tp.WG
+}
+
+func (tp *TxPool) GetQueue() []*types.Transaction {
+	return tp.queueTxs.convert()
+}
+
+func (tp *TxPool) GetPending() []*types.Transaction {
+	return tp.pendingTxs.convert()
 }

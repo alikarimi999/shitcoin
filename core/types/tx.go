@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"encoding/gob"
 	"fmt"
 	"math/big"
 	"time"
@@ -31,6 +30,29 @@ type TxIn struct {
 	Signature []byte
 }
 
+func (in *TxIn) serialize() []byte {
+	b := bytes.Join(
+		[][]byte{
+			in.OutPoint,
+			Int2Hex(int64(in.Vout)),
+			Int2Hex(int64(in.Value)),
+			in.PublicKey,
+			in.Signature,
+		}, nil,
+	)
+	return b
+}
+
+func (out *TxOut) serialize() []byte {
+	b := bytes.Join(
+		[][]byte{
+			out.PublicKeyHash,
+			Int2Hex(int64(out.Value)),
+		}, nil,
+	)
+	return b
+}
+
 func (tx *Transaction) IsValid(u []*UTXO) bool {
 	if !tx.IsCoinbase() {
 		checker := []int{}
@@ -51,45 +73,53 @@ func (tx *Transaction) IsValid(u []*UTXO) bool {
 
 		}
 
-		if len(checker) == len(tx.TxInputs) && tx.Checksig() {
+		if len(checker) == len(tx.TxInputs) && tx.Checksig() && tx.CheckHash() {
 			return true
 		}
 		return false
 	}
 
-	return tx.Checksig()
+	return tx.Checksig() && tx.CheckHash()
 }
 
-func SerializeTxs(txs []*Transaction) []byte {
+func (tx *Transaction) CheckHash() bool {
+	snapTx := tx.SnapShot()
 
-	var result []byte
-	for _, tx := range txs {
-		result = append(result, tx.Serialize()...)
-	}
-
-	return result
-}
-
-func (tx *Transaction) Serialize() []byte {
-
-	buff := new(bytes.Buffer)
-
-	encoder := gob.NewEncoder(buff)
-	encoder.Encode(tx)
-
-	return buff.Bytes()
-
-}
-
-func (tx *Transaction) SetHash() {
-	for _, in := range tx.TxInputs {
+	hash := snapTx.TxID
+	snapTx.TxID = nil
+	for _, in := range snapTx.TxInputs {
+		in.PublicKey = nil
 		in.Signature = nil
 	}
-	data := tx.Serialize()
+
+	return bytes.Equal(hash, Hash(snapTx))
+}
+
+func (tx *Transaction) serialize() []byte {
+
+	t, _ := tx.Timestamp.MarshalBinary()
+	b := bytes.Join(
+		[][]byte{
+			t,
+			tx.TxID,
+			join(tx.TxInputs),
+			join(tx.TxOutputs),
+		},
+		nil,
+	)
+
+	return b
+
+}
+
+// TODO: for sign interface
+func Hash(s serializer) []byte {
+
+	data := s.serialize()
 
 	hash := sha256.Sum256(data)
 
-	tx.TxID = hash[:]
+	return hash[:]
 }
 
 func CoinbaseTx(to Address, amount int) *Transaction {
@@ -105,7 +135,7 @@ func CoinbaseTx(to Address, amount int) *Transaction {
 		},
 	}
 
-	tx.SetHash()
+	tx.TxID = Hash(tx)
 	return tx
 }
 
@@ -146,7 +176,7 @@ func (tx Transaction) Checksig() bool {
 		s.SetBytes(sig[(sigLen / 2):])
 		r.SetBytes(sig[:(sigLen / 2)])
 
-		if !ecdsa.Verify(&rawpubkey, txCopy.Serialize(), &r, &s) {
+		if !ecdsa.Verify(&rawpubkey, txCopy.serialize(), &r, &s) {
 			fmt.Println("Signature does not match")
 			return false
 		}

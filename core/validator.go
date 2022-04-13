@@ -24,9 +24,6 @@ func NewValidator(c *Chain) *validator {
 
 func (v *validator) ValidateTX(tx *types.Transaction) bool {
 	account := types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
-
-	// v.Mu.Lock()
-	// defer v.Mu.Unlock()
 	tokens := v.c.ChainState.GetTokens(account)
 
 	return tx.IsValid(tokens)

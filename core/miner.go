@@ -62,14 +62,17 @@ func (m *Miner) Handler() {
 
 					atomic.AddUint64(&m.c.ChainHeight, 1)
 					m.c.Mu.Lock()
-					log.Printf("chain height is %d\n", m.c.ChainHeight)
+					log.Printf("chain height is %d\n", atomic.LoadUint64(&m.c.ChainHeight))
+					m.c.Node.NodeHeight++
 					m.c.LastBlock = *b
+					m.c.Node.LastHash = b.BH.BlockHash
 					m.c.Mu.Unlock()
 
 					m.c.ChainState.StateTransition(&types.Block{}, true)
 					m.c.TxPool.UpdatePool(b, true)
 
 					if b.BH.BlockIndex == 0 { // for genesis block
+						m.c.Node.GenesisHash = m.c.LastBlock.BH.BlockHash
 						err := SaveGenInDB(*b, &m.c.DB)
 						if err != nil {
 							log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)

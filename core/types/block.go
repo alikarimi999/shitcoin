@@ -94,8 +94,7 @@ func (b *Block) SnapShot() *Block {
 	return nb
 }
 
-func (b *Block) Serialize() []byte {
-
+func (b *Block) serialize() []byte {
 	d := bytes.Join(
 		[][]byte{
 			b.BH.PrevHash,
@@ -104,7 +103,7 @@ func (b *Block) Serialize() []byte {
 			b.BH.Miner,
 			Int2Hex(int64(b.BH.Nonce)),
 			Int2Hex(b.BH.Timestamp),
-			SerializeTxs(b.Transactions),
+			join(b.Transactions),
 		},
 		nil,
 	)
@@ -114,7 +113,7 @@ func (b *Block) Serialize() []byte {
 
 func (b *Block) Hash() []byte {
 	b.BH.BlockHash = nil
-	data := b.Serialize()
+	data := b.serialize()
 
 	hash := sha256.Sum256(data)
 	return hash[:]

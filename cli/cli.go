@@ -83,7 +83,7 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
+	log.Printf("Starting Node %s\n", c.Node.ID)
 	go c.ChainState.Handler()
 	go c.TxPool.Handler()
 	go c.Miner.Handler()
@@ -92,16 +92,20 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	o := &network.Objects{
-		Mu:        sync.Mutex{},
-		Ch:        c,
-		Port:      port,
-		BroadChan: make(chan *network.MsgBlock),
-		Cl:        http.Client{Timeout: 5 * time.Second},
+	client := &network.Client{
+		Ch: c,
+		Cl: http.Client{Timeout: 20 * time.Second},
+	}
+	s := &network.Server{
+		Mu:           sync.Mutex{},
+		Ch:           c,
+		Client:       *client,
+		Port:         port,
+		RecievedTxs:  make([][]byte, 30, 60),
+		RecievedBlks: make([][]byte, 10, 20),
 	}
 
-	go network.RunServer(o, port)
+	go network.RunServer(s, port)
 	c.Wg.Wait()
 }
 
@@ -111,25 +115,32 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	if err != nil {
 		log.Fatalln(err)
 	}
-
+	log.Printf("Starting Node %s\n", c.Node.ID)
 	go c.ChainState.Handler()
 	go c.TxPool.Handler()
 	go c.Miner.Handler()
 
-	o := &network.Objects{
-		Mu:        sync.Mutex{},
-		Ch:        c,
-		Port:      port,
-		BroadChan: make(chan *network.MsgBlock),
-		Cl:        http.Client{Timeout: 5 * time.Second},
+	client := &network.Client{
+		Ch: c,
+		Cl: http.Client{Timeout: 20 * time.Second},
 	}
 
-	go network.RunServer(o, port)
+	s := &network.Server{
+		Mu:           sync.Mutex{},
+		Ch:           c,
+		Client:       *client,
+		Port:         port,
+		RecievedTxs:  make([][]byte, 30, 60),
+		RecievedBlks: make([][]byte, 10, 20),
+	}
 
 	err = network.PairNode(c, node)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
+	client.IBD()
+
+	go network.RunServer(s, port)
 
 	c.Wg.Wait()
 

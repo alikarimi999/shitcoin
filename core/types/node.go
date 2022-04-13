@@ -1,29 +1,46 @@
 package types
 
-import "fmt"
+import (
+	"crypto/rand"
+	"fmt"
+	"log"
+
+	"github.com/alikarimi999/shitcoin/config"
+)
 
 type Node struct {
-	NodeId NodeID
+	ID string
 	// Node full address
-	FullAdd    string
-	Port       string
-	LastHash   []byte
-	NodeHeight uint64
+	FullAdd     string
+	Port        string
+	GenesisHash []byte
+	LastHash    []byte
+	NodeHeight  uint64
 }
 
-// every node hash a NodeID which is miner Address of that node
-type NodeID Account
+func NodeID(config config.Config) string {
 
-// return a Node struct that represent this node
-func ThisNode(nid []byte, port int, last_hash []byte, height uint64) *Node {
-
-	n := &Node{
-		NodeId:     NodeID(nid),
-		FullAdd:    "",
-		Port:       fmt.Sprintf(":%d", port),
-		LastHash:   last_hash,
-		NodeHeight: height,
+	id := config.GetNodeID()
+	if id == "" {
+		var i [32]byte
+		rand.Read(i[:])
+		id = fmt.Sprintf("%x", i[:])
+		config.SetNodeID(id)
+		err := config.SaveConfig()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
+	return id
+}
 
-	return n
+func NewNode(config config.Config, port int, last_hash []byte, height uint64) *Node {
+	return &Node{
+		ID:          NodeID(config),
+		FullAdd:     "",
+		Port:        fmt.Sprintf(":%d", port),
+		GenesisHash: []byte{},
+		LastHash:    last_hash,
+		NodeHeight:  height,
+	}
 }

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 
@@ -8,39 +9,52 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func (o *Objects) getTrx(ctx echo.Context) error {
-	var t types.Transaction
-	err := ctx.Bind(&t)
+type MsgTX struct {
+	SenderID string            `json:"sender"`
+	TX       types.Transaction `json:"tx"`
+}
+
+func (s *Server) getTrx(ctx echo.Context) error {
+	var mt MsgTX
+	err := ctx.Bind(&mt)
 
 	if err != nil {
 		log.Panic(err)
 	}
 
-	log.Printf("Transaction %x recieved\n", t.TxID)
+	for _, hash := range s.RecievedTxs {
+		if bytes.Equal(hash, mt.TX.TxID) {
+			log.Printf("Transaction %x proccessed before\n", mt.TX.TxID)
+			return nil
+		}
+	}
+	log.Printf("Transaction %x recieved from %s\n", mt.TX.TxID, mt.SenderID)
 
-	if o.Ch.Validator.ValidateTX(&t) {
-		o.Ch.TxPool.UpdatePool(t.SnapShot(), false)
-		log.Printf("Transaction %x is valid\n", t.TxID)
+	s.RecievedTxs = append(s.RecievedTxs, mt.TX.TxID)
+
+	if s.Ch.Validator.ValidateTX(&mt.TX) {
+		s.Ch.TxPool.UpdatePool(&mt.TX, false)
+		log.Printf("Transaction %x is valid\n", mt.TX.TxID)
 
 		// Broadcast transaction
-		BroadTrx(o.Ch, t)
+		BroadTrx(s.Ch, &mt)
 
 		ctx.String(200, fmt.Sprintf("Transaction added to MemPool\n"))
 		return nil
 
 	}
-	log.Printf("Transaction %x is not valid\n", t.TxID)
+	log.Printf("Transaction %x is not valid\n", mt.TX.TxID)
 	ctx.String(200, "Transaction is not valid")
 	return nil
 }
 
-func (o *Objects) sendUtxoset(ctx echo.Context) error {
+func (s *Server) sendUTXOs(ctx echo.Context) error {
 
 	account := ctx.QueryParam("account")
 	msg := msgUTXOSet{
 		Account: types.Account(account),
 	}
-	msg.Utxos = o.Ch.ChainState.GetTokens(msg.Account)
+	msg.Utxos = s.Ch.ChainState.GetTokens(msg.Account)
 
 	ctx.JSONPretty(200, msg, "  ")
 	return nil
