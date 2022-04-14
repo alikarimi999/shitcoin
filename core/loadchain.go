@@ -1,7 +1,9 @@
 package core
 
 import (
+	"errors"
 	"fmt"
+	"log"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
@@ -10,11 +12,10 @@ import (
 func Loadchain(dbPath string, port int, miner []byte) (*Chain, error) {
 
 	c, err := NewChain(dbPath, port, miner)
-	block := ReadLastBlock(c.DB)
-
-	if len(block.BH.BlockHash) == 0 {
-		fmt.Println("There is no block in database")
-		return c, err
+	block, err := ReadLastBlock(c.DB)
+	if err != nil {
+		log.Println(err.Error())
+		return c, nil
 	}
 
 	c.LastBlock = *block
@@ -27,26 +28,26 @@ func Loadchain(dbPath string, port int, miner []byte) (*Chain, error) {
 
 }
 
-func ReadLastBlock(d database.Database) *types.Block {
+func ReadLastBlock(d database.Database) (*types.Block, error) {
 
 	last_block := types.NewBlock()
 
 	lh, err := d.DB.Get([]byte("last_hash"), nil)
 	if err != nil {
-		return last_block
+		return last_block, errors.New("didn't found last_hash")
 	}
 
 	b, err := d.DB.Get(lh, nil)
 	if err != nil {
-		return last_block
+		return last_block, errors.New("didn't found last_block")
 	}
 
 	i := Deserialize(b, last_block)
 
 	if block, ok := i.(*types.Block); ok {
-		return block
+		return block, errors.New("didn't found last_block")
 
 	}
 
-	return last_block
+	return last_block, nil
 }

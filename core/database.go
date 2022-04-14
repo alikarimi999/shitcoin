@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -20,29 +21,29 @@ func (c *Chain) NewIter() *DatabaseIterator {
 
 }
 
-func (iter *DatabaseIterator) Next() *types.Block {
-
-	block := ReadBlock(iter.DB, iter.NextHash)
+func (iter *DatabaseIterator) Next() (*types.Block, error) {
+	block, err := ReadBlock(iter.DB, iter.NextHash)
+	if err != nil {
+		return nil, err
+	}
 	iter.NextHash = block.BH.PrevHash
-
-	return block
+	return block, nil
 }
 
-func ReadBlock(d database.Database, hash []byte) *types.Block {
+func ReadBlock(d database.Database, hash []byte) (*types.Block, error) {
 
 	b, err := d.DB.Get(hash, nil)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, errors.New("can't get block from database")
 	}
-
 	bl := Deserialize(b, new(types.Block))
 
 	if block, ok := bl.(*types.Block); ok {
-		return block
+		return block, nil
 
 	}
 
-	return nil
+	return nil, errors.New("can't get block from database")
 }
 
 func Serialize(t interface{}) []byte {

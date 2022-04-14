@@ -220,7 +220,7 @@ func (ms *MemSet) UpdateMemSet(tx *types.Transaction) {
 			for i, tu := range ms.Tokens[account] {
 				if bytes.Equal(in.OutPoint, tu.utxo.Txid) && in.Vout == tu.utxo.Index && in.Value == tu.utxo.Txout.Value {
 					ms.Tokens[account] = append(ms.Tokens[account][:i], ms.Tokens[account][i+1:]...)
-					fmt.Printf("One Token with %d Value deleted from %s in memory\n ", tu.utxo.Txout.Value, types.Pub2Address(tu.utxo.Txout.PublicKeyHash, true))
+					// fmt.Printf("One Token with %d Value deleted from %s in memory\n ", tu.utxo.Txout.Value, types.Pub2Address(tu.utxo.Txout.PublicKeyHash, true))
 					continue
 				}
 			}
@@ -246,12 +246,11 @@ func (ms *MemSet) UpdateMemSet(tx *types.Transaction) {
 			},
 		}
 		if sender == account {
-			// tu.local = true
 			tu.spendable = true
 		}
 
 		ms.Tokens[account] = append(ms.Tokens[account], tu)
-		fmt.Printf("One Token with %d value added for %s in memory and spendable is(%v)\n", tu.utxo.Txout.Value, types.Pub2Address(tu.utxo.Txout.PublicKeyHash, true), tu.spendable)
+		// fmt.Printf("One Token with %d value added for %s in memory and spendable is(%v)\n", tu.utxo.Txout.Value, types.Pub2Address(tu.utxo.Txout.PublicKeyHash, true), tu.spendable)
 	}
 
 }

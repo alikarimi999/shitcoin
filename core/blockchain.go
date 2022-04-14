@@ -33,7 +33,7 @@ type Chain struct {
 	Miner       miner
 
 	NMU        *sync.Mutex // nodes mutex
-	KnownNodes map[string]*types.Node
+	Peers      map[string]*types.Node
 	DBPath     string
 	Port       int
 	MinedBlock chan *types.Block
@@ -52,13 +52,12 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 
 		MinerAdd:   miner,
 		NMU:        &sync.Mutex{},
-		KnownNodes: make(map[string]*types.Node),
+		Peers:      make(map[string]*types.Node),
 		DBPath:     path,
 		Port:       port,
 		MinedBlock: make(chan *types.Block),
 	}
 
-	// TODO: add to NodeHeight after adding a new mined block to chain
 	c.TxPool = NewTxPool(c)
 	c.ChainState = NewState(c)
 	c.Miner = NewMiner(c)

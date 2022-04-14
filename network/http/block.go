@@ -59,8 +59,8 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 		s.Ch.ChainHeight++
 		s.Ch.Node.NodeHeight++
 		s.Ch.Node.LastHash = mb.Block.BH.BlockHash
-		// Update NodeHeight of sender in KnownNodes
-		s.Ch.KnownNodes[mb.Sender].NodeHeight++
+		// Update NodeHeight of sender in Peers
+		s.Ch.Peers[mb.Sender].NodeHeight++
 
 		go s.Ch.AddBlockInDB(mb.Block, mb.Mu)
 
@@ -91,7 +91,10 @@ func (so *Server) SendBlock(ctx echo.Context) error {
 	}
 	hash := gb.BlockHash
 
-	block := core.ReadBlock(so.Ch.DB, hash)
+	block, err := core.ReadBlock(so.Ch.DB, hash)
+	if err != nil {
+		return err
+	}
 	mb := Msgblock(block, so.Ch.Node.ID, block.BH.Miner)
 
 	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)

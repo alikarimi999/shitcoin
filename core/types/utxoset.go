@@ -2,7 +2,6 @@ package types
 
 import (
 	"bytes"
-	"fmt"
 	"sync"
 )
 
@@ -49,7 +48,7 @@ func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 			for i, utxo := range u.Tokens[account] {
 				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
 					u.Tokens[account] = append(u.Tokens[account][:i], u.Tokens[account][i+1:]...)
-					fmt.Printf("One Token with %d Value deleted from %s\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+					// fmt.Printf("One Token with %d Value deleted from %s\n ", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 					continue
 				}
 			}
@@ -71,7 +70,7 @@ func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 			Txout: out,
 		}
 		u.Tokens[Account(Pub2Address(pkh, true))] = append(u.Tokens[Account(Pub2Address(pkh, true))], utxo)
-		fmt.Printf("One Token with %d value added for %s in UTXO Set\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
+		// fmt.Printf("One Token with %d value added for %s in UTXO Set\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 	}
 
 }

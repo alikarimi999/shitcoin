@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Difficulty uint64 = 10
+	difficulty uint64 = 14
 )
 
 // PowEngine is a consensus engine based on proof-of-work alghorithm
@@ -34,7 +34,7 @@ type PowEngine struct {
 func NewPowEngine() *PowEngine {
 
 	target := big.NewInt(1)
-	target.Lsh(target, 256-uint(Difficulty))
+	target.Lsh(target, 256-uint(difficulty))
 
 	pe := &PowEngine{
 		block:  types.NewBlock(),

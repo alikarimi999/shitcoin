@@ -3,6 +3,7 @@ package network
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -32,7 +33,7 @@ func (c *Client) IBD() {
 	c.Ch.Mu.Lock()
 	defer c.Ch.Mu.Unlock()
 
-	for _, node := range c.Ch.KnownNodes {
+	for _, node := range c.Ch.Peers {
 		if syncNode.NodeHeight <= node.NodeHeight {
 			syncNode = node
 		}
@@ -47,13 +48,16 @@ func (c *Client) Sync(n *types.Node) {
 	// Getting hash of remain mined Blocks from sync node
 	inv, err := getInv(blockType, c.Ch.Node.ID, c.Ch.LastBlock.BH.BlockHash, n.FullAdd, c.Cl)
 	if err != nil {
-		fmt.Println(err.Error())
+		log.Fatal(err)
 	}
 
 	// Downloading mined Blocks
-	for i := 0; i < len(inv.BlocksHash); i++ {
-		hash := inv.BlocksHash[blockIndex(c.Ch.LastBlock.BH.BlockIndex+1)]
-
+	// here we assumed map is sorted by blockIndex
+	for i, hash := range inv.BlocksHash {
+		if i != blockIndex(c.Ch.ChainHeight) {
+			break
+		}
+		fmt.Printf("Sync %x\n", hash)
 		mb := getBlock(hash, c.Ch.Node.ID, n.FullAdd, c.Cl)
 		if reflect.DeepEqual(mb, NewMsgBlock()) {
 			break
@@ -63,13 +67,13 @@ func (c *Client) Sync(n *types.Node) {
 		// check if block is valid
 		if c.Ch.Validator.ValidateBlk(mb.Block) {
 			fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
-			go c.Ch.ChainState.StateTransition(mb.Block.SnapShot, false)
-			go c.Ch.TxPool.UpdatePool(mb.Block.SnapShot, false)
+			c.Ch.ChainState.StateTransition(mb.Block, false)
+			c.Ch.TxPool.UpdatePool(mb.Block, false)
+
 			c.Ch.AddBlockInDB(mb.Block, mb.Mu)
 
 			atomic.AddUint64(&c.Ch.ChainHeight, 1)
 			c.Ch.LastBlock = *mb.Block
-			c.Ch.Node.NodeHeight++
 			c.Ch.Node.LastHash = mb.Block.BH.BlockHash
 		}
 
@@ -83,8 +87,12 @@ func (c *Client) Sync(n *types.Node) {
 // this function download transactions from sync node transaction pool
 func downloadTxPool(c *core.Chain, dst string) {
 	log.Println("Requesting transactions hashs of transaction pool")
-	inv, _ := getInv(txType, c.Node.ID, c.Node.LastHash, dst, http.Client{Timeout: 20 * time.Second})
-	fmt.Printf("download func: %d\n", inv.InvType)
+	inv, err := getInv(txType, c.Node.ID, c.Node.LastHash, dst, http.Client{Timeout: 20 * time.Second})
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
 	if inv.InvType != txType {
 		log.Println("Incorrect data sended by sync node")
 	}
@@ -137,20 +145,21 @@ func getInv(invType InvType, nid string, lh []byte, syncAddress string, cl http.
 		InvType:  invType,
 		LastHash: lh,
 	}
-	fmt.Printf("Address %s\n", syncAddress)
-
 	b, _ := json.Marshal(gi)
 
 	resp, err := http.Post(fmt.Sprintf("%s/getinventory", syncAddress), "application/json", bytes.NewReader(b))
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err.Error())
+		return nil, errors.New("unsuccessful")
 	}
-	body, _ := io.ReadAll(resp.Body)
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println(err.Error())
+		return nil, errors.New("unsuccessful")
+	}
 	inv := NewInv()
 	json.Unmarshal(body, inv)
-	fmt.Printf("Client Resp: %d\n", inv.InvType)
-
 	return inv, nil
 
 }
@@ -162,7 +171,7 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 	// first element in slice always refer to node itself
 	src_nodes = append(src_nodes, c.Node)
 
-	for _, n := range c.KnownNodes {
+	for _, n := range c.Peers {
 		src_nodes = append(src_nodes, n)
 	}
 	gn := &GetNode{src_nodes, nil}
@@ -186,23 +195,23 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 		return src_nodes
 	}
 
-	// first DstNodes always is the node that share it's known nodes with this node
+	// first DstNodes always is the node that share it's Peers with this node
 	gn.ShareNodes[0].FullAdd = dst
 	return gn.ShareNodes
 }
 
-// This function help to obtain some node addresses of network and add these KnownNodes
+// This function help to obtain some node addresses of network and add these Peers
 func ShareNode(c *core.Chain, dst string, cl http.Client) error {
 
 	// nodes that we didn't ask to share their nodes with us yet
 	nq := NewNodesQueue(MaxNodesQueue)
 
 Out:
-	for i := 0; i <= MaxKnownNodes; i++ {
+	for i := 0; i <= MaxPeers; i++ {
 		fmt.Printf("Requesting New Nodes from Node Address %s\n", dst)
 
-		if len(c.KnownNodes) >= MaxKnownNodes {
-			return fmt.Errorf("...this node has enough known node")
+		if len(c.Peers) >= MaxPeers {
+			return fmt.Errorf("...this node has enough Peers")
 		}
 		share_nodes := GetNewNodes(c, dst, cl)
 		if len(share_nodes) == 0 {
@@ -214,7 +223,7 @@ Out:
 
 			fmt.Printf("...This Node %s Recieved from %s\n", n.ID, dst)
 
-			if len(c.KnownNodes) >= MaxKnownNodes {
+			if len(c.Peers) >= MaxPeers {
 				break Out
 			}
 
@@ -222,13 +231,13 @@ Out:
 			if n.ID == c.Node.ID {
 				continue
 			}
-			if _, ok := c.KnownNodes[n.ID]; ok {
+			if _, ok := c.Peers[n.ID]; ok {
 				fmt.Println("...Node already exist")
 				continue
 			}
 
-			c.KnownNodes[n.ID] = n
-			fmt.Printf("...Node %s with address %s added to KnownNodes\n", n.ID, n.FullAdd)
+			c.Peers[n.ID] = n
+			fmt.Printf("...Node %s with address %s added to Peers\n", n.ID, n.FullAdd)
 
 			// dont send getnode to previous destination node again
 			if n.FullAdd != dst {
@@ -285,38 +294,27 @@ func PairNode(c *core.Chain, dst string) error {
 		log.Fatalln(err)
 	}
 
-	if c.ChainHeight >= 1 {
-		if !IsInSameNet(c.Node, node) {
-			log.Fatalf(`This two nodes don't have same Genesis Block\n
-		If You want to connect to this network delete database "%s" and try again... `, c.DBPath)
+	if c.ChainHeight == 0 {
+		// Downloading genesis block
+		msg := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
+
+		c.LastBlock = *msg.Block
+		atomic.AddUint64(&c.ChainHeight, 1)
+
+		// update Node
+		c.Node.GenesisHash = msg.Block.BH.BlockHash
+		c.Node.LastHash = msg.Block.BH.BlockHash
+
+		c.TxPool.UpdatePool(msg.Block, false)
+		c.ChainState.StateTransition(msg.Block, false)
+
+		// Save Genesis block in database
+		err = core.SaveGenInDB(*msg.Block, &c.DB)
+		if err != nil {
+			log.Fatalln(err)
 		}
-		// Nodes have same Genesis Block
-		// so cane be paired
-		c.KnownNodes[node.ID] = node
-		fmt.Printf("...Node %s with address %s added to KnownNodes\n", node.ID, node.FullAdd)
-
+		fmt.Printf("Genesis Block added to database\n")
 	}
-
-	// Downloading genesis block
-	msg := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
-
-	c.LastBlock = *msg.Block
-	atomic.AddUint64(&c.ChainHeight, 1)
-
-	// update Node
-	c.Node.NodeHeight++
-	c.Node.GenesisHash = msg.Block.BH.BlockHash
-	c.Node.LastHash = msg.Block.BH.BlockHash
-
-	c.TxPool.UpdatePool(msg.Block, false)
-	c.ChainState.StateTransition(msg.Block, false)
-
-	// Save Genesis block in database
-	err = core.SaveGenInDB(*msg.Block, &c.DB)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	fmt.Printf("Genesis Block added to database\n")
 
 	err = ShareNode(c, dst, cl)
 	if err != nil {
@@ -326,11 +324,11 @@ func PairNode(c *core.Chain, dst string) error {
 	return nil
 }
 
-// Broadcast received transaction to Known Nodes
+// Broadcast received transaction to  Peers
 func BroadTrx(c *core.Chain, mt *MsgTX) {
 	cl := http.Client{Timeout: 5 * time.Second}
 
-	for _, n := range c.KnownNodes {
+	for _, n := range c.Peers {
 		if mt.SenderID != n.ID {
 			mt.SenderID = c.Node.ID
 			b, _ := json.Marshal(mt)
@@ -354,7 +352,7 @@ func (c *Client) BroadMinedBlock() {
 		}
 
 		c.Ch.NMU.Lock()
-		nodes := c.Ch.KnownNodes
+		nodes := c.Ch.Peers
 
 		for _, node := range nodes {
 			// dont send to miner of block or sender
@@ -378,7 +376,7 @@ func (c *Client) BroadBlock() {
 
 		mb.Mu.Lock()
 		defer mb.Mu.Unlock()
-		for _, node := range c.Ch.KnownNodes {
+		for _, node := range c.Ch.Peers {
 			// dont send to miner of block or sender
 			if mb.Sender == node.ID || c.Ch.Node.ID == node.ID {
 				continue

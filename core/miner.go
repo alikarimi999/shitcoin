@@ -100,6 +100,7 @@ func (m *Miner) Handler() {
 func (m *Miner) Start(txs []*types.Transaction, wg *sync.WaitGroup) {
 
 	b := types.NewBlock()
+
 	for _, tx := range txs {
 		b.Transactions = append(b.Transactions, tx)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	MaxKnownNodes int = 8
+	MaxPeers int = 8
 	MaxNodesQueue
 )
 
@@ -69,12 +69,12 @@ func (s *Server) SendNodes(ctx echo.Context) error {
 	gn.ShareNodes = collectNodes(s.Ch, gn.SrcNodes, senderID)
 
 	for _, n := range gn.SrcNodes {
-		if len(s.Ch.KnownNodes) >= MaxKnownNodes {
+		if len(s.Ch.Peers) >= MaxPeers {
 			break
 		}
-		if _, ok := s.Ch.KnownNodes[n.ID]; !ok && n.ID != s.Ch.Node.ID {
-			s.Ch.KnownNodes[n.ID] = n
-			fmt.Printf("...Add Node %s with address %s to KnownNodes\n", n.ID, n.FullAdd)
+		if _, ok := s.Ch.Peers[n.ID]; !ok && n.ID != s.Ch.Node.ID {
+			s.Ch.Peers[n.ID] = n
+			fmt.Printf("...Add Node %s with address %s to Peers\n", n.ID, n.FullAdd)
 		}
 
 		if s.Ch.ChainHeight < n.NodeHeight {
@@ -99,9 +99,9 @@ func collectNodes(c *core.Chain, src []*types.Node, sender string) []*types.Node
 	fmt.Printf("...Sending Node %s\n", n.ID)
 
 Out:
-	for _, node := range c.KnownNodes {
+	for _, node := range c.Peers {
 
-		// every node share 1 KnownNodes an itself address
+		// every node share 1 Peers an itself address
 		// this made applicant node to requests other nodes for sharing their nodes too
 		// and this made the network more destributed
 		if len(share_nodes) >= 2 {

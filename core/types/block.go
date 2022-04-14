@@ -28,18 +28,20 @@ type Block struct {
 }
 
 func NewBlock() *Block {
+	h := [32]byte{}
 	return &Block{
 		BH: &BlockHeader{
 			Timestamp:  0,
 			PrevHash:   []byte{},
 			BlockIndex: 0,
-			BlockHash:  []byte{},
+			BlockHash:  h[:],
 			Miner:      []byte{},
 			Nonce:      0,
 			Difficulty: 0,
 		},
 		Transactions: make([]*Transaction, 0),
 	}
+
 }
 
 func (b *Block) Validate_hash() bool {

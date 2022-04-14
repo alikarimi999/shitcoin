@@ -106,6 +106,7 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 	}
 
 	go network.RunServer(s, port)
+
 	c.Wg.Wait()
 }
 
@@ -116,6 +117,7 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 		log.Fatalln(err)
 	}
 	log.Printf("Starting Node %s\n", c.Node.ID)
+
 	go c.ChainState.Handler()
 	go c.TxPool.Handler()
 	go c.Miner.Handler()

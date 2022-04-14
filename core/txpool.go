@@ -67,6 +67,7 @@ func (tp *TxPool) Handler() {
 	for {
 		select {
 		case tx := <-tp.queueCh: // recieve from network
+			tp.Mu.Lock()
 			tp.queueTxs[txid(tx.TxID)] = tx.SnapShot()
 			tp.c.ChainState.StateTransition(tx, false)
 			if tp.queIsFull() {
@@ -88,7 +89,9 @@ func (tp *TxPool) Handler() {
 				tp.c.Miner.Start(tp.pendingTxs.convert(), tp.WG)
 
 			}
+			tp.Mu.Unlock()
 		case local := <-tp.minedLocal:
+			tp.Mu.Lock()
 			if atomic.LoadUint64(&tp.c.ChainHeight) == 1 { // for genesis block
 				tp.queueTxs = make(Transactions)
 
@@ -97,9 +100,13 @@ func (tp *TxPool) Handler() {
 				tp.pendingTxs = make(Transactions)
 
 			}
+			tp.Mu.Unlock()
 
 		case tp.sealedTxs = <-tp.sealCh:
+			tp.Mu.Lock()
 			tp.manageTxs()
+			tp.Mu.Unlock()
+
 		}
 
 	}
@@ -180,5 +187,7 @@ func (tp *TxPool) GetQueue() []*types.Transaction {
 }
 
 func (tp *TxPool) GetPending() []*types.Transaction {
+	tp.Mu.Lock()
+	defer tp.Mu.Unlock()
 	return tp.pendingTxs.convert()
 }

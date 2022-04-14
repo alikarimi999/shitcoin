@@ -11,12 +11,11 @@ import (
 func (s *Server) SendInv(ctx echo.Context) error {
 
 	gi := GetInv{}
-	err := ctx.Bind(gi)
+	err := ctx.Bind(&gi)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Server: %d\n", gi.InvType)
 	inv := NewInv()
 	inv.NodeId = s.Ch.Node.ID
 	switch gi.InvType {
@@ -25,14 +24,19 @@ func (s *Server) SendInv(ctx echo.Context) error {
 		inv.InvType = blockType
 		iter := s.Ch.NewIter()
 		for {
-			block := iter.Next()
-			if bytes.Equal(block.BH.PrevHash, gi.LastHash) {
+			block, err := iter.Next()
+			if err != nil {
 				break
 			}
 			fmt.Printf("Adding block hash %x to inv\n", block.BH.BlockHash)
 			inv.BlocksHash[blockIndex(block.BH.BlockIndex)] = block.BH.BlockHash
 			inv.InvCount++
+
+			if err != nil || bytes.Equal(block.BH.PrevHash, gi.LastHash) {
+				break
+			}
 		}
+
 	case txType:
 		log.Printf("Node %s Requests for Transactions in transaction pool\n", gi.NodeId)
 		inv.InvType = txType
