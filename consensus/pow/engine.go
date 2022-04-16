@@ -14,8 +14,8 @@ const (
 	difficulty uint64 = 14
 )
 
-// PowEngine is a consensus engine based on proof-of-work alghorithm
-type PowEngine struct {
+// engine is a consensus engine based on proof-of-work alghorithm
+type engine struct {
 	block  *types.Block
 	target *big.Int
 
@@ -31,12 +31,12 @@ type PowEngine struct {
 	abort  chan struct{}
 }
 
-func NewPowEngine() *PowEngine {
+func NewEngine() *engine {
 
 	target := big.NewInt(1)
 	target.Lsh(target, 256-uint(difficulty))
 
-	pe := &PowEngine{
+	pe := &engine{
 		block:  types.NewBlock(),
 		target: target,
 		result: []byte{},
@@ -48,40 +48,39 @@ func NewPowEngine() *PowEngine {
 	return pe
 }
 
-func (pe *PowEngine) mine() bool {
+func (e *engine) mine() bool {
 
 	var intHash big.Int
 
 	var n uint64 = 0
-	log.Printf("Start mining block %d\n", pe.block.BH.BlockIndex)
+	log.Printf("Start mining block %d\n", e.block.BH.BlockIndex)
 search:
 	for n < math.MaxUint64 {
 
 		select {
-		case <-pe.abort:
-			log.Printf("POWEngine nonce search for block %d aborted\n", pe.block.BH.BlockIndex)
+		case <-e.abort:
+			log.Printf("POW Engine nonce search for block %d aborted\n", e.block.BH.BlockIndex)
 			break search
-		case <-pe.pause:
-			log.Printf("POWEngine nonce search for block %d paused\n", pe.block.BH.BlockIndex)
+		case <-e.pause:
+			log.Printf("POW Engine nonce search for block %d paused\n", e.block.BH.BlockIndex)
 			select {
-			case <-pe.resume:
-				log.Printf("POWEngine nonce search for block %d resumed\n", pe.block.BH.BlockIndex)
+			case <-e.resume:
+				log.Printf("POW Engine nonce search for block %d resumed\n", e.block.BH.BlockIndex)
 				continue search
-			case <-pe.abort:
-				log.Printf("POWEngine nonce search for block %d aborted\n", pe.block.BH.BlockIndex)
+			case <-e.abort:
+				log.Printf("POW Engine nonce search for block %d aborted\n", e.block.BH.BlockIndex)
 				break search
 			}
 		default:
 
-			pe.block.BH.Nonce = n
-			hash := pe.block.Hash()
-			// fmt.Printf("\r%x", hash)
+			e.block.BH.Nonce = n
+			hash := e.block.Hash()
 			intHash.SetBytes(hash)
 
-			if intHash.Cmp(pe.target) == -1 {
-				pe.block.BH.BlockHash = hash
-				pe.result = hash
-				atomic.StoreInt32(&pe.running, 0)
+			if intHash.Cmp(e.target) == -1 {
+				e.block.BH.BlockHash = hash
+				e.result = hash
+				atomic.StoreInt32(&e.running, 0)
 				return true
 
 			}
@@ -93,9 +92,8 @@ search:
 	return false
 }
 
-func (pe *PowEngine) VerifyBlock(b *types.Block, s *types.UtxoSet, last_block types.Block) bool {
+func (e *engine) VerifyBlock(b *types.Block, u *types.UtxoSet, last_block types.Block) bool {
 
-	// fmt.Println(b.BH.BlockIndex-1 == last_block.BH.BlockIndex, bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash), b.Validate_hash())
 	if b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
 
 		for _, tx := range b.Transactions {
@@ -105,49 +103,50 @@ func (pe *PowEngine) VerifyBlock(b *types.Block, s *types.UtxoSet, last_block ty
 			} else {
 				account = types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
 			}
-			if !tx.IsValid(s.Tokens[account]) {
+			if !tx.IsValid(u.Tokens[account]) {
+				log.Printf("Transaction %x is invalid\n", tx.TxID)
 				return false
 			}
-			s.UpdateUtxoSet(tx)
+			u.UpdateUtxoSet(tx)
 		}
 		return true
 	}
 	return false
 }
 
-func (pe *PowEngine) IsRunning() bool {
-	return atomic.LoadInt32(&pe.running) == 1
+func (e *engine) IsRunning() bool {
+	return atomic.LoadInt32(&e.running) == 1
 }
 
-func (pe *PowEngine) Start(b *types.Block) bool {
-	if !pe.IsRunning() {
-		atomic.StoreInt32(&pe.running, 1)
-		pe.block = b
+func (e *engine) Start(b *types.Block) bool {
+	if !e.IsRunning() {
+		atomic.StoreInt32(&e.running, 1)
+		e.block = b
 		// time.Sleep(3 * time.Second)
-		return pe.mine()
+		return e.mine()
 	}
 	return false
 }
 
-func (pe *PowEngine) Pause() {
-	if pe.IsRunning() {
-		atomic.StoreInt32(&pe.running, 0)
-		pe.pause <- struct{}{}
+func (e *engine) Pause() {
+	if e.IsRunning() {
+		atomic.StoreInt32(&e.running, 0)
+		e.pause <- struct{}{}
 	}
 }
 
-func (pe *PowEngine) Close() {
-	atomic.StoreInt32(&pe.running, 0)
-	pe.abort <- struct{}{}
+func (e *engine) Close() {
+	atomic.StoreInt32(&e.running, 0)
+	e.abort <- struct{}{}
 }
 
-func (pe *PowEngine) Resume() {
-	if !pe.IsRunning() {
-		atomic.StoreInt32(&pe.running, 1)
-		pe.resume <- struct{}{}
+func (e *engine) Resume() {
+	if !e.IsRunning() {
+		atomic.StoreInt32(&e.running, 1)
+		e.resume <- struct{}{}
 	}
 }
 
-func (pe *PowEngine) GetHash() []byte {
-	return pe.result
+func (e *engine) GetHash() []byte {
+	return e.result
 }

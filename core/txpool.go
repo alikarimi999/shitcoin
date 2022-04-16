@@ -2,8 +2,8 @@ package core
 
 import (
 	"log"
+	"sort"
 	"sync"
-	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 )
@@ -22,6 +22,8 @@ type pool interface {
 	GetWaitGroup() *sync.WaitGroup
 	GetQueue() []*types.Transaction
 	GetPending() []*types.Transaction
+
+	// GenesisUpdate(b *types.Block)
 }
 
 type TxPool struct {
@@ -34,26 +36,26 @@ type TxPool struct {
 	pendingTxs Transactions // verified transactions that are in mining block
 	sealedTxs  Transactions // verified transactions that sealed in mining process
 
-	queueCh    chan *types.Transaction
-	sealCh     chan Transactions
-	continueCh chan struct{}
+	queueCh       chan *types.Transaction
+	minedRemoteCh chan Transactions
+	continueCh    chan struct{}
 
 	minedLocal chan bool
 }
 
 func NewTxPool(c *Chain) *TxPool {
 	t := &TxPool{
-		Mu:         &sync.Mutex{},
-		c:          c,
-		wg:         c.Wg,
-		WG:         &sync.WaitGroup{},
-		queueTxs:   make(Transactions),
-		pendingTxs: make(Transactions),
-		sealedTxs:  make(Transactions),
-		queueCh:    make(chan *types.Transaction),
-		sealCh:     make(chan Transactions),
-		continueCh: make(chan struct{}),
-		minedLocal: make(chan bool, 1),
+		Mu:            &sync.Mutex{},
+		c:             c,
+		wg:            c.Wg,
+		WG:            &sync.WaitGroup{},
+		queueTxs:      make(Transactions),
+		pendingTxs:    make(Transactions),
+		sealedTxs:     make(Transactions),
+		queueCh:       make(chan *types.Transaction),
+		minedRemoteCh: make(chan Transactions),
+		continueCh:    make(chan struct{}),
+		minedLocal:    make(chan bool, 1),
 	}
 
 	return t
@@ -75,36 +77,43 @@ func (tp *TxPool) Handler() {
 				tp.queueTxs = make(Transactions)
 				// creat miner reward transaction
 				mtx := MinerReward(tp.c.MinerAdd, minerReward)
-				tp.c.ChainState.StateTransition(mtx, false)
+				// tp.c.ChainState.StateTransition(mtx, false)
 				tp.pendingTxs[txid(mtx.TxID)] = mtx
 
-				// wait untile Mining proccess done
+				txs := tp.pendingTxs.convert()
+
+				// wait untile previous Mining proccess finish
 				tp.WG.Wait()
 				// notify chainstate handler that mining process is going to start
 				tp.c.ChainState.MinerIsStarting(true)
 
-				<-tp.continueCh // wait for ChainState Handler until take a snapshot of memSet
+				<-tp.continueCh // wait for ChainState Handler until take a snapshot from memSet
 
 				// start mining process
-				tp.c.Miner.Start(tp.pendingTxs.convert(), tp.WG)
+				tp.c.Miner.Start(txs, tp.WG)
 
 			}
 			tp.Mu.Unlock()
 		case local := <-tp.minedLocal:
 			tp.Mu.Lock()
-			if atomic.LoadUint64(&tp.c.ChainHeight) == 1 { // for genesis block
-				tp.queueTxs = make(Transactions)
 
-			}
 			if local {
 				tp.pendingTxs = make(Transactions)
 
 			}
 			tp.Mu.Unlock()
 
-		case tp.sealedTxs = <-tp.sealCh:
+		case tp.sealedTxs = <-tp.minedRemoteCh:
 			tp.Mu.Lock()
 			tp.manageTxs()
+
+			// FIXME:
+			// sending remaining transactions of transaction pool to state Handler
+			txs := []*types.Transaction{}
+			for _, tx := range tp.queueTxs {
+				txs = append(txs, tx.SnapShot())
+			}
+			tp.c.ChainState.StateTransition(txs, false)
 			tp.Mu.Unlock()
 
 		}
@@ -112,7 +121,7 @@ func (tp *TxPool) Handler() {
 	}
 }
 
-// delete transactions that added to mined block before from queueTxs and pendingTxs
+// delete transactions that added to remote mined block from queueTxs and pendingTxs
 // and transfer pendingTxs that didn't added to mined block to queueTxs
 func (tp *TxPool) manageTxs() {
 
@@ -124,7 +133,9 @@ func (tp *TxPool) manageTxs() {
 
 	// merge pendingTxs and queueTxs
 	for txid, tx := range tp.pendingTxs {
-		tp.queueTxs[txid] = tx
+		if !tx.IsCoinbase() { // delete miner reward that remain in pendingTxs
+			tp.queueTxs[txid] = tx
+		}
 	}
 
 	tp.pendingTxs = make(Transactions)
@@ -148,7 +159,7 @@ func (tp *TxPool) UpdatePool(o any, local bool) {
 			tp.minedLocal <- local
 			return
 		}
-		tp.sealCh <- newTransations(t.Transactions)
+		tp.minedRemoteCh <- newTransations(t.Transactions)
 		return
 	default:
 		return
@@ -165,6 +176,7 @@ func (t Transactions) convert() []*types.Transaction {
 	for _, tx := range t {
 		txs = append(txs, tx)
 	}
+	sort.SliceStable(txs, func(i, j int) bool { return txs[i].Timestamp < txs[j].Timestamp })
 	return txs
 }
 
@@ -191,3 +203,7 @@ func (tp *TxPool) GetPending() []*types.Transaction {
 	defer tp.Mu.Unlock()
 	return tp.pendingTxs.convert()
 }
+
+// func (tp *TxPool) GenesisUpdate(b *types.Block) {
+// 	tp.
+// }

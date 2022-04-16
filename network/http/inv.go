@@ -15,26 +15,26 @@ func (s *Server) SendInv(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
-
+	s.Ch.Mu.Lock()
+	defer s.Ch.Mu.Unlock()
 	inv := NewInv()
 	inv.NodeId = s.Ch.Node.ID
 	switch gi.InvType {
 	case blockType:
 		log.Printf("Node %s Requests for Block hashes\n", gi.NodeId)
 		inv.InvType = blockType
-		iter := s.Ch.NewIter()
-		for {
-			block, err := iter.Next()
-			if err != nil {
-				break
-			}
-			fmt.Printf("Adding block hash %x to inv\n", block.BH.BlockHash)
-			inv.BlocksHash[blockIndex(block.BH.BlockIndex)] = block.BH.BlockHash
-			inv.InvCount++
+		last_index := s.Ch.LastBlock.BH.BlockIndex
+		inv.BlocksHash[blockIndex(last_index)] = s.Ch.LastBlock.BH.BlockHash
+		inv.InvCount++
 
-			if err != nil || bytes.Equal(block.BH.PrevHash, gi.LastHash) {
+		for i := last_index - 1; ; i-- {
+			hash, err := s.Ch.DB.GetBlkHash(i, nil)
+			if err != nil || bytes.Equal(hash, gi.LastHash) {
 				break
 			}
+			fmt.Printf("Adding block hash %x to inv\n", hash)
+			inv.BlocksHash[blockIndex(i)] = hash
+			inv.InvCount++
 		}
 
 	case txType:

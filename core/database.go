@@ -1,69 +1,59 @@
 package core
 
-import (
-	"bytes"
-	"encoding/gob"
-	"errors"
-	"log"
+// type DatabaseIterator struct {
+// 	NextHash []byte
+// 	DB       database.Database
+// }
 
-	"github.com/alikarimi999/shitcoin/core/types"
-	"github.com/alikarimi999/shitcoin/database"
-)
+// func (c *Chain) NewIter() *DatabaseIterator {
 
-type DatabaseIterator struct {
-	NextHash []byte
-	DB       database.Database
-}
+// 	return &DatabaseIterator{c.LastBlock.BH.BlockHash, c.DB}
 
-func (c *Chain) NewIter() *DatabaseIterator {
+// }
 
-	return &DatabaseIterator{c.LastBlock.BH.BlockHash, c.DB}
+// func (iter *DatabaseIterator) Next() (*types.Block, error) {
+// 	block, err := ReadBlock(iter.DB, iter.NextHash)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	iter.NextHash = block.BH.PrevHash
+// 	return block, nil
+// }
 
-}
+// func ReadBlock(d database.Database, hash []byte) (*types.Block, error) {
 
-func (iter *DatabaseIterator) Next() (*types.Block, error) {
-	block, err := ReadBlock(iter.DB, iter.NextHash)
-	if err != nil {
-		return nil, err
-	}
-	iter.NextHash = block.BH.PrevHash
-	return block, nil
-}
+// 	b, err := d.DB.Get(hash, nil)
+// 	if err != nil {
+// 		return nil, errors.New("can't get block from database")
+// 	}
+// 	bl := Deserialize(b, new(types.Block))
 
-func ReadBlock(d database.Database, hash []byte) (*types.Block, error) {
+// 	if block, ok := bl.(*types.Block); ok {
+// 		return block, nil
 
-	b, err := d.DB.Get(hash, nil)
-	if err != nil {
-		return nil, errors.New("can't get block from database")
-	}
-	bl := Deserialize(b, new(types.Block))
+// 	}
 
-	if block, ok := bl.(*types.Block); ok {
-		return block, nil
+// 	return nil, errors.New("can't get block from database")
+// }
 
-	}
+// func Serialize(t interface{}) []byte {
+// 	buff := bytes.Buffer{}
 
-	return nil, errors.New("can't get block from database")
-}
+// 	encoder := gob.NewEncoder(&buff)
+// 	encoder.Encode(t)
 
-func Serialize(t interface{}) []byte {
-	buff := bytes.Buffer{}
+// 	return buff.Bytes()
+// }
 
-	encoder := gob.NewEncoder(&buff)
-	encoder.Encode(t)
+// func Deserialize(b []byte, t interface{}) interface{} {
 
-	return buff.Bytes()
-}
+// 	decoder := gob.NewDecoder(bytes.NewBuffer(b))
 
-func Deserialize(b []byte, t interface{}) interface{} {
+// 	err := decoder.Decode(t)
 
-	decoder := gob.NewDecoder(bytes.NewBuffer(b))
+// 	if err != nil {
+// 		log.Fatalln(err)
+// 	}
 
-	err := decoder.Decode(t)
-
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	return t
-}
+// 	return t
+// }

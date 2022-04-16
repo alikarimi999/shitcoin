@@ -4,6 +4,7 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/alikarimi999/shitcoin/consensus"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -13,6 +14,8 @@ type miner interface {
 	Handler()
 	Start(txs []*types.Transaction, wg *sync.WaitGroup)
 	IsRunning() bool
+	MineGenesis(tx *types.Transaction)
+	StartTime() time.Duration
 }
 
 type tmplBlock struct {
@@ -25,7 +28,8 @@ type Miner struct {
 	c      *Chain
 	engine consensus.Engin
 
-	blockCh chan *tmplBlock
+	blockCh   chan *tmplBlock
+	startTime time.Duration
 }
 
 func NewMiner(c *Chain) *Miner {
@@ -49,11 +53,11 @@ func (m *Miner) Handler() {
 			go func(b *types.Block, wg *sync.WaitGroup) {
 				defer wg.Done()
 				m.c.Mu.Lock()
-				b.BH.BlockIndex = m.c.ChainHeight
+				b.BH.BlockIndex = atomic.LoadUint64(&m.c.ChainHeight)
 				b.BH.PrevHash = m.c.LastBlock.BH.BlockHash
 				b.BH.Miner = m.c.MinerAdd
 				m.c.Mu.Unlock()
-
+				time.Sleep(2 * time.Second)
 				if m.engine.Start(b) {
 					log.Printf("Block %d with hash %x with %d transations Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
 
@@ -68,22 +72,10 @@ func (m *Miner) Handler() {
 					m.c.Node.LastHash = b.BH.BlockHash
 					m.c.Mu.Unlock()
 
-					m.c.ChainState.StateTransition(&types.Block{}, true)
+					m.c.ChainState.StateTransition(b, true)
 					m.c.TxPool.UpdatePool(b, true)
 
-					if b.BH.BlockIndex == 0 { // for genesis block
-						m.c.Node.GenesisHash = m.c.LastBlock.BH.BlockHash
-						err := SaveGenInDB(*b, &m.c.DB)
-						if err != nil {
-							log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
-							return
-						}
-						log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
-						return
-
-					}
-
-					err := b.SaveBlockInDB(&m.c.DB, &sync.Mutex{})
+					err := m.c.DB.SaveBlock(b, m.c.Node.ID, m.c.Node.ID, nil)
 					if err != nil {
 						log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
 						return
@@ -98,12 +90,13 @@ func (m *Miner) Handler() {
 }
 
 func (m *Miner) Start(txs []*types.Transaction, wg *sync.WaitGroup) {
-
+	m.startTime = time.Duration(time.Now().UnixNano())
 	b := types.NewBlock()
 
 	for _, tx := range txs {
 		b.Transactions = append(b.Transactions, tx)
 	}
+
 	wg.Add(1)
 	m.blockCh <- &tmplBlock{
 		block: b,
@@ -112,6 +105,46 @@ func (m *Miner) Start(txs []*types.Transaction, wg *sync.WaitGroup) {
 
 }
 
+func (m *Miner) MineGenesis(tx *types.Transaction) {
+	b := types.NewBlock()
+
+	b.BH.BlockIndex = 0
+	b.BH.PrevHash = m.c.LastBlock.BH.BlockHash
+	b.BH.Miner = m.c.MinerAdd
+	b.Transactions = append(b.Transactions, tx)
+
+	if m.engine.Start(b) {
+		m.c.ChainState.GenesisUpdate(b)
+		m.c.Node.GenesisHash = b.BH.BlockHash
+
+		m.c.ChainHeight++
+		log.Printf("genesis block mined\nchain height is %d\n", atomic.LoadUint64(&m.c.ChainHeight))
+		m.c.Node.NodeHeight++
+		m.c.LastBlock = *b
+		m.c.Node.LastHash = b.BH.BlockHash
+
+		err := m.c.DB.SaveBlock(b, m.c.Node.ID, m.c.Node.ID, nil)
+		if err != nil {
+			log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
+			return
+		}
+		log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
+		return
+
+	}
+
+}
+
 func (m *Miner) IsRunning() bool {
 	return m.engine.IsRunning()
+}
+
+func MinerReward(miner types.Address, amount int) *types.Transaction {
+	pkh := types.Add2PKH(miner)
+	reward := types.CoinbaseTx(pkh, amount)
+	return reward
+}
+
+func (m *Miner) StartTime() time.Duration {
+	return m.startTime
 }

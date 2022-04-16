@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"sort"
+	"sync/atomic"
 
-	"github.com/alikarimi999/shitcoin/core"
-	"github.com/alikarimi999/shitcoin/database"
 	"github.com/labstack/echo/v4"
 )
 
@@ -18,14 +18,16 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 		return err
 	}
 
+	mb.Mu.Lock()
 	for _, hash := range s.RecievedBlks {
 		if bytes.Equal(hash, mb.Block.BH.BlockHash) {
 			log.Printf("Block %x proccessed before\n", mb.Block.BH.BlockHash)
 		}
 	}
 
-	log.Printf("Block: %d with hash %x mined by %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
+	log.Printf("Block: %d with hash %x mined by node %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
 	s.RecievedBlks = append(s.RecievedBlks, mb.Block.BH.BlockHash)
+	mb.Mu.Unlock()
 
 	s.Ch.Mu.Lock()
 	defer s.Ch.Mu.Unlock()
@@ -40,6 +42,8 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 		s.Ch.Engine.Pause()
 		log.Println("  Proccessing Block")
 
+		sort.SliceStable(mb.Block.Transactions, func(i, j int) bool { return mb.Block.Transactions[i].Timestamp < mb.Block.Transactions[j].Timestamp })
+
 		if !s.Ch.Validator.ValidateBlk(mb.Block) {
 			// resume paused mining process
 			s.Ch.Engine.Resume()
@@ -52,17 +56,17 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 		fmt.Println()
 		log.Printf("Block %x is valid\n", mb.Block.BH.BlockHash)
 
-		go s.Ch.ChainState.StateTransition(mb.Block, false)
-		go s.Ch.TxPool.UpdatePool(mb.Block, false)
+		s.Ch.ChainState.StateTransition(mb.Block, false)
+		s.Ch.TxPool.UpdatePool(mb.Block, false)
 
 		s.Ch.LastBlock = *mb.Block
-		s.Ch.ChainHeight++
+		atomic.AddUint64(&s.Ch.ChainHeight, 1)
 		s.Ch.Node.NodeHeight++
 		s.Ch.Node.LastHash = mb.Block.BH.BlockHash
 		// Update NodeHeight of sender in Peers
 		s.Ch.Peers[mb.Sender].NodeHeight++
 
-		go s.Ch.AddBlockInDB(mb.Block, mb.Mu)
+		s.Ch.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
 
 		// Broadcasting valid new Mined block in network
 		// Reciver is BroadBlock function
@@ -73,29 +77,19 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 	return nil
 }
 
-// save block sender in chainstate database
-func SaveBlocksenderInDB(hash []byte, sender string, d database.Database) error {
-
-	err := d.DB.Put(hash, []byte(sender), nil)
-	if err != nil {
-		return err
-	}
-	log.Printf("Block: %x with sender %s saved in database\n", hash, sender)
-	return nil
-}
-func (so *Server) SendBlock(ctx echo.Context) error {
+func (s *Server) SendBlock(ctx echo.Context) error {
 	gb := new(GetBlock)
 	err := ctx.Bind(gb)
 	if err != nil {
 		return err
 	}
 	hash := gb.BlockHash
-
-	block, err := core.ReadBlock(so.Ch.DB, hash)
+	block, err := s.Ch.DB.GetBlockH(hash, nil)
 	if err != nil {
 		return err
 	}
-	mb := Msgblock(block, so.Ch.Node.ID, block.BH.Miner)
+	mb := Msgblock(block, s.Ch.Node.ID, "")
+	fmt.Printf("SendBlock: %x\n", mb.Block.BH.BlockHash)
 
 	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)
 	ctx.JSONPretty(200, mb, " ")

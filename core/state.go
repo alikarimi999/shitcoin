@@ -2,12 +2,12 @@ package core
 
 import (
 	"bytes"
-	"fmt"
 	"log"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 	"github.com/alikarimi999/shitcoin/database"
@@ -24,6 +24,8 @@ type chainstate interface {
 
 	// if miner start mining a block it will send a true to chainstate
 	MinerIsStarting(start bool)
+
+	GenesisUpdate(b *types.Block)
 }
 
 type stateTransmitter struct {
@@ -32,6 +34,7 @@ type stateTransmitter struct {
 }
 
 type tmpUtxo struct {
+	time      time.Duration
 	utxo      types.UTXO
 	spendable bool
 }
@@ -58,10 +61,11 @@ type State struct {
 	memSetSnapshot *MemSet
 	stableSet      *types.UtxoSet // chain state after bloack mined or remote mined block validate
 
-	transportBlkCh  chan *stateTransmitter
-	transportTxCh   chan *stateTransmitter
+	transportBlkCh chan *stateTransmitter
+	transportTxCh  chan *stateTransmitter
+
 	minerstartingCh chan struct{}
-	DB              database.Database
+	DB              database.DB
 }
 
 func NewState(c *Chain) *State {
@@ -76,7 +80,7 @@ func NewState(c *Chain) *State {
 		transportTxCh:   make(chan *stateTransmitter),
 		minerstartingCh: make(chan struct{}),
 	}
-	s.DB.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
+	s.DB = database.SetupDB(filepath.Join(c.DBPath, "/chainstate"))
 
 	return s
 }
@@ -92,28 +96,43 @@ func (s *State) Handler() {
 			if !t.local {
 				for _, tx := range t.TXs {
 					s.stableSet.UpdateUtxoSet(tx)
-					s.memSet = ConvertStable2Mem(s.stableSet)
 				}
+				s.memSet = convert(s.stableSet)
+
+				st := <-s.transportTxCh // recieve remaining transactions from transaction pool
+				for _, tx := range st.TXs {
+					s.memSet.update(tx)
+				}
+
 			} else {
+
+				tx := t.TXs[0]
+				owner := types.Account(s.c.MinerAdd)
+				utxo := types.UTXO{
+					Txid:  tx.TxID,
+					Index: 0,
+					Txout: tx.TxOutputs[0],
+				}
+
+				s.memSetSnapshot.Tokens[owner] = append(s.memSetSnapshot.Tokens[owner], &tmpUtxo{utxo: utxo, spendable: true})
+				s.memSet.Tokens[owner] = append(s.memSet.Tokens[owner], &tmpUtxo{utxo: utxo, spendable: true})
 				s.stableSet = s.memSetSnapshot.ConvertMem2Stable()
-				s.memSetSnapshot.Tokens = make(map[types.Account][]*tmpUtxo)
 			}
-			s.saveInDB()
-			s.memSet.SyncMemSet(s.stableSet.Tokens)
+			s.save()
+
+			s.SyncMemSet(s.stableSet.Tokens)
+			s.memSetSnapshot.Tokens = make(map[types.Account][]*tmpUtxo)
 			s.mu.Unlock()
 		case t := <-s.transportTxCh:
 			s.mu.Lock()
 			for _, tx := range t.TXs {
-				s.memSet.UpdateMemSet(tx)
+				s.memSet.update(tx)
 			}
 			s.mu.Unlock()
 		case <-s.minerstartingCh:
 			s.mu.Lock()
 			s.memSetSnapshot = s.memSet.SnapShot()
-
-			if atomic.LoadUint64(&s.c.ChainHeight) > 0 { // if is not for genesis blockCh
-				s.c.TxPool.ContinueHandler(true)
-			}
+			s.c.TxPool.ContinueHandler(true)
 			s.mu.Unlock()
 
 		}
@@ -168,6 +187,16 @@ func (s *State) StateTransition(o any, local bool) {
 			for _, tx := range t.Transactions {
 				st.TXs = append(st.TXs, tx)
 			}
+		} else {
+			// just send minerReward transation to state handler
+			// miner reward transaction is last one
+			for _, tx := range t.Transactions {
+				if tx.IsCoinbase() {
+					st.TXs = append(st.TXs, tx)
+					break
+				}
+			}
+
 		}
 
 		s.transportBlkCh <- st
@@ -177,26 +206,24 @@ func (s *State) StateTransition(o any, local bool) {
 		st.TXs = append(st.TXs, t)
 		s.transportTxCh <- st
 		return
+	case []*types.Transaction:
+		st := &stateTransmitter{}
+
+		for _, tx := range t {
+			st.TXs = append(st.TXs, tx)
+		}
+		s.transportTxCh <- st
+		return
 	default:
 		return
 	}
 }
 
-func (s *State) saveInDB() {
-
-	for account, utxos := range s.stableSet.Tokens {
-		key := []byte(account)
-		value := Serialize(utxos)
-
-		err := s.DB.DB.Put(key, value, nil)
-
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Printf("All Tokens for %s saved in database\n\n", account)
-
+func (s *State) save() {
+	err := s.DB.SaveState(s.stableSet.Tokens, atomic.LoadUint64(&s.c.ChainHeight), nil)
+	if err != nil {
+		log.Fatalln(err)
 	}
-
 }
 
 func (s *State) MinerIsStarting(start bool) {
@@ -205,7 +232,7 @@ func (s *State) MinerIsStarting(start bool) {
 	}
 }
 
-func (ms *MemSet) UpdateMemSet(tx *types.Transaction) {
+func (ms *MemSet) update(tx *types.Transaction) {
 
 	ms.Mu.Lock()
 	defer ms.Mu.Unlock()
@@ -239,6 +266,7 @@ func (ms *MemSet) UpdateMemSet(tx *types.Transaction) {
 		account := types.Account(types.Pub2Address(pkh, true))
 
 		tu := &tmpUtxo{
+			time: time.Duration(time.Now().UnixNano()),
 			utxo: types.UTXO{
 				Txid:  tx.TxID,
 				Index: uint(index),
@@ -255,11 +283,11 @@ func (ms *MemSet) UpdateMemSet(tx *types.Transaction) {
 
 }
 
-func (ms *MemSet) SyncMemSet(tokens map[types.Account][]*types.UTXO) {
-	for a, tus := range ms.Tokens {
+func (s *State) SyncMemSet(tokens map[types.Account][]*types.UTXO) {
+	for a, tus := range s.memSet.Tokens {
 		for _, utxo := range tokens[a] {
 			for _, tu := range tus {
-				if reflect.DeepEqual(*utxo, tu.utxo) {
+				if tu.time < s.c.Miner.StartTime() && reflect.DeepEqual(*utxo, tu.utxo) {
 					tu.spendable = true
 				}
 			}
@@ -301,13 +329,13 @@ func (ms *MemSet) SnapShot() *MemSet {
 	return m
 }
 
-func ConvertStable2Mem(us *types.UtxoSet) *MemSet {
+func convert(stable *types.UtxoSet) *MemSet {
 	ms := &MemSet{
 		Mu:     &sync.Mutex{},
 		Tokens: make(map[types.Account][]*tmpUtxo),
 	}
 
-	for a, utxos := range us.Tokens {
+	for a, utxos := range stable.Tokens {
 
 		for _, utxo := range utxos {
 			tmp := &tmpUtxo{
@@ -319,4 +347,13 @@ func ConvertStable2Mem(us *types.UtxoSet) *MemSet {
 	}
 
 	return ms
+}
+
+func (s *State) GenesisUpdate(b *types.Block) {
+	for _, tx := range b.Transactions {
+		s.memSet.update(tx)
+		s.memSet.Tokens[types.Account(s.c.MinerAdd)][0].spendable = true
+		s.stableSet.UpdateUtxoSet(tx)
+	}
+	s.save()
 }

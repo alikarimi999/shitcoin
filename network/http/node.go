@@ -2,6 +2,7 @@ package network
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -77,8 +78,9 @@ func (s *Server) SendNodes(ctx echo.Context) error {
 			fmt.Printf("...Add Node %s with address %s to Peers\n", n.ID, n.FullAdd)
 		}
 
-		if s.Ch.ChainHeight < n.NodeHeight {
-			fmt.Printf("... Node %s had %d mined block more\n", n.ID, n.NodeHeight-s.Ch.ChainHeight)
+		h := atomic.LoadUint64(&s.Ch.ChainHeight)
+		if h < n.NodeHeight {
+			fmt.Printf("... Node %s had %d mined block more\n", n.ID, n.NodeHeight-h)
 			fmt.Printf("... Trying to sync with Node %s\n", n.ID)
 			s.Ch.Mu.Lock()
 			s.Client.Sync(n)

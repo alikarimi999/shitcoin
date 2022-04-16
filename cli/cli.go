@@ -93,8 +93,9 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 		log.Fatalln(err)
 	}
 	client := &network.Client{
-		Ch: c,
-		Cl: http.Client{Timeout: 20 * time.Second},
+		Ch:        c,
+		Cl:        http.Client{Timeout: 20 * time.Second},
+		BroadChan: make(chan *network.MsgBlock),
 	}
 	s := &network.Server{
 		Mu:           sync.Mutex{},
@@ -117,14 +118,14 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 		log.Fatalln(err)
 	}
 	log.Printf("Starting Node %s\n", c.Node.ID)
-
 	go c.ChainState.Handler()
 	go c.TxPool.Handler()
 	go c.Miner.Handler()
 
 	client := &network.Client{
-		Ch: c,
-		Cl: http.Client{Timeout: 20 * time.Second},
+		Ch:        c,
+		Cl:        http.Client{Timeout: 20 * time.Second},
+		BroadChan: make(chan *network.MsgBlock),
 	}
 
 	s := &network.Server{

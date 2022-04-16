@@ -4,12 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/gob"
 	"fmt"
 	"log"
-	"sync"
-
-	"github.com/alikarimi999/shitcoin/database"
 )
 
 type BlockHeader struct {
@@ -61,24 +57,25 @@ func (b *Block) Validate_hash() bool {
 
 }
 
-func (b Block) SaveBlockInDB(d *database.Database, mu *sync.Mutex) error {
+//TODO: delete this section
+// func (b Block) SaveBlockInDB(d *database.Database, mu *sync.Mutex) error {
 
-	mu.Lock()
-	block := Serialize(b)
-	mu.Unlock()
+// 	mu.Lock()
+// 	block := Serialize(b)
+// 	mu.Unlock()
 
-	key := b.BH.BlockHash
-	value := block
+// 	key := b.BH.BlockHash
+// 	value := block
 
-	err := d.DB.Put(key, value, nil)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
+// 	err := d.DB.Put(key, value, nil)
+// 	if err != nil {
+// 		fmt.Println(err.Error())
+// 	}
 
-	err = d.DB.Put([]byte("last_hash"), b.BH.BlockHash, nil)
-	fmt.Printf("Last Block in database is %x\n\n", b.BH.BlockHash)
-	return err
-}
+// 	err = d.DB.Put([]byte("last_hash"), b.BH.BlockHash, nil)
+// 	fmt.Printf("Last Block in database is %x\n\n", b.BH.BlockHash)
+// 	return err
+// }
 
 // a deep copy of Block
 func (b *Block) SnapShot() *Block {
@@ -129,25 +126,4 @@ func Int2Hex(n int64) []byte {
 	}
 
 	return buff.Bytes()
-}
-func Serialize(t interface{}) []byte {
-	buff := bytes.Buffer{}
-
-	encoder := gob.NewEncoder(&buff)
-	encoder.Encode(t)
-
-	return buff.Bytes()
-}
-
-func Deserialize(b []byte, t interface{}) interface{} {
-
-	decoder := gob.NewDecoder(bytes.NewBuffer(b))
-
-	err := decoder.Decode(t)
-
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	return t
 }

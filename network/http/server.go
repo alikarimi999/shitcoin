@@ -3,6 +3,7 @@ package network
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/labstack/echo/v4"
@@ -35,5 +36,16 @@ func RunServer(s *Server, port int) {
 	e.POST("/minedblock", s.MinedBlock)
 	e.POST("/getnode", s.SendNodes)
 	e.GET("nodeinfo", s.SendNodeInfo)
+
+	e.GET("/peers", s.peers)
+	e.GET("/block/:hash", s.block)
+	e.GET("/height", s.SendHeight)
+
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
+}
+
+// TODO: delete this and use node.NodeHeight
+func (s *Server) SendHeight(ctx echo.Context) error {
+	ctx.String(200, fmt.Sprintf("%d", atomic.LoadUint64(&s.Ch.ChainHeight)))
+	return nil
 }

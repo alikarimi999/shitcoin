@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,7 +39,7 @@ func (c *Client) IBD() {
 			syncNode = node
 		}
 	}
-
+	fmt.Printf("Sync Node IS %s\n", syncNode.ID)
 	c.Sync(syncNode)
 }
 
@@ -54,7 +55,7 @@ func (c *Client) Sync(n *types.Node) {
 	// Downloading mined Blocks
 	// here we assumed map is sorted by blockIndex
 	for i, hash := range inv.BlocksHash {
-		if i != blockIndex(c.Ch.ChainHeight) {
+		if i != blockIndex(atomic.LoadUint64(&c.Ch.ChainHeight)) {
 			break
 		}
 		fmt.Printf("Sync %x\n", hash)
@@ -66,22 +67,49 @@ func (c *Client) Sync(n *types.Node) {
 
 		// check if block is valid
 		if c.Ch.Validator.ValidateBlk(mb.Block) {
-			fmt.Printf("... Block %x is valid\n", mb.Block.BH.BlockHash)
+			log.Printf("Block %d : %x is valid\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash)
 			c.Ch.ChainState.StateTransition(mb.Block, false)
 			c.Ch.TxPool.UpdatePool(mb.Block, false)
 
-			c.Ch.AddBlockInDB(mb.Block, mb.Mu)
+			c.Ch.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
 
 			atomic.AddUint64(&c.Ch.ChainHeight, 1)
 			c.Ch.LastBlock = *mb.Block
 			c.Ch.Node.LastHash = mb.Block.BH.BlockHash
+
 		}
 
 	}
-	if c.Ch.ChainHeight == n.NodeHeight {
+
+	//FIXME: dont use this mechanism
+	height, err := getHeight(n.FullAdd)
+	if err != nil {
+		return
+	}
+	fmt.Printf("HEIGHT >>>> %d  %d\n", atomic.LoadUint64(&c.Ch.ChainHeight), height)
+	if atomic.LoadUint64(&c.Ch.ChainHeight) == height {
 		downloadTxPool(c.Ch, n.FullAdd)
 		fmt.Println(".....  Nodes Synced Now!  .....")
 	}
+}
+
+func getHeight(address string) (uint64, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/height", address))
+	if err != nil {
+		return 0, err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	s, err := strconv.Atoi(string(body))
+	if err != nil {
+		return 0, err
+	}
+	return uint64(s), nil
+
 }
 
 // this function download transactions from sync node transaction pool
@@ -133,6 +161,9 @@ func getBlock(hash []byte, nid string, syncAddress string, cl http.Client) *MsgB
 		fmt.Println(err.Error())
 		return mb
 	}
+	fmt.Printf("getBlock %x\n", mb.Block.BH.BlockHash)
+
+	// FIXME:
 	mb.Mu = &sync.Mutex{}
 	return mb
 
@@ -294,22 +325,22 @@ func PairNode(c *core.Chain, dst string) error {
 		log.Fatalln(err)
 	}
 
-	if c.ChainHeight == 0 {
+	if atomic.LoadUint64(&c.ChainHeight) == 0 {
 		// Downloading genesis block
-		msg := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
+		mb := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
 
-		c.LastBlock = *msg.Block
+		c.LastBlock = *mb.Block
 		atomic.AddUint64(&c.ChainHeight, 1)
 
 		// update Node
-		c.Node.GenesisHash = msg.Block.BH.BlockHash
-		c.Node.LastHash = msg.Block.BH.BlockHash
+		c.Node.GenesisHash = mb.Block.BH.BlockHash
+		c.Node.LastHash = mb.Block.BH.BlockHash
 
-		c.TxPool.UpdatePool(msg.Block, false)
-		c.ChainState.StateTransition(msg.Block, false)
+		c.TxPool.UpdatePool(mb.Block, false)
+		c.ChainState.StateTransition(mb.Block, false)
 
 		// Save Genesis block in database
-		err = core.SaveGenInDB(*msg.Block, &c.DB)
+		err = c.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -348,7 +379,7 @@ func (c *Client) BroadMinedBlock() {
 			Mu:     &sync.Mutex{},
 			Sender: c.Ch.Node.ID,
 			Block:  block,
-			Miner:  c.Ch.MinerAdd,
+			Miner:  c.Ch.Node.ID,
 		}
 
 		c.Ch.NMU.Lock()

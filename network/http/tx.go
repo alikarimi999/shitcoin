@@ -31,7 +31,6 @@ func (s *Server) getTrx(ctx echo.Context) error {
 	log.Printf("Transaction %x recieved from %s\n", mt.TX.TxID, mt.SenderID)
 
 	s.RecievedTxs = append(s.RecievedTxs, mt.TX.TxID)
-
 	if s.Ch.Validator.ValidateTX(&mt.TX) {
 		s.Ch.TxPool.UpdatePool(&mt.TX, false)
 		log.Printf("Transaction %x is valid\n", mt.TX.TxID)

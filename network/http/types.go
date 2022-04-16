@@ -23,7 +23,7 @@ type MsgBlock struct {
 	Mu     *sync.Mutex
 	Sender string
 	Block  *types.Block
-	Miner  types.Address
+	Miner  string
 }
 
 func NewMsgBlock() *MsgBlock {
@@ -75,7 +75,7 @@ func NewInv() *Inv {
 
 }
 
-func Msgblock(b *types.Block, sender string, miner types.Address) *MsgBlock {
+func Msgblock(b *types.Block, sender string, miner string) *MsgBlock {
 	mb := &MsgBlock{
 		Sender: sender,
 		Block:  b,

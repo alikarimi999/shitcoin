@@ -1,24 +1,25 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"log"
-
-	"github.com/alikarimi999/shitcoin/core/types"
-	"github.com/alikarimi999/shitcoin/database"
 )
 
 func Loadchain(dbPath string, port int, miner []byte) (*Chain, error) {
 
 	c, err := NewChain(dbPath, port, miner)
-	block, err := ReadLastBlock(c.DB)
+	last_block, err := c.DB.LastBlock(nil)
 	if err != nil {
 		log.Println(err.Error())
 		return c, nil
 	}
 
-	c.LastBlock = *block
+	// TODO: use BlkIterator
+	// for i:=0;i<=int(last_block.BH.BlockIndex);i++ {
+	// 	c.DB.GetBlockI()
+	// }
+
+	c.LastBlock = *last_block
 	c.ChainHeight = c.LastBlock.BH.BlockIndex + 1
 	fmt.Printf("ChainHeight is %d\nlast block index: %d\n", c.ChainHeight, c.LastBlock.BH.BlockIndex)
 
@@ -28,26 +29,27 @@ func Loadchain(dbPath string, port int, miner []byte) (*Chain, error) {
 
 }
 
-func ReadLastBlock(d database.Database) (*types.Block, error) {
+// TODO: Delete:
+// func ReadLastBlock(d database.Database) (*types.Block, error) {
 
-	last_block := types.NewBlock()
+// 	last_block := types.NewBlock()
 
-	lh, err := d.DB.Get([]byte("last_hash"), nil)
-	if err != nil {
-		return last_block, errors.New("didn't found last_hash")
-	}
+// 	lh, err := d.DB.Get([]byte("last_hash"), nil)
+// 	if err != nil {
+// 		return last_block, errors.New("didn't found last_hash")
+// 	}
 
-	b, err := d.DB.Get(lh, nil)
-	if err != nil {
-		return last_block, errors.New("didn't found last_block")
-	}
+// 	b, err := d.DB.Get(lh, nil)
+// 	if err != nil {
+// 		return last_block, errors.New("didn't found last_block")
+// 	}
 
-	i := Deserialize(b, last_block)
+// 	i := Deserialize(b, last_block)
 
-	if block, ok := i.(*types.Block); ok {
-		return block, errors.New("didn't found last_block")
+// 	if block, ok := i.(*types.Block); ok {
+// 		return block, errors.New("didn't found last_block")
 
-	}
+// 	}
 
-	return last_block, nil
-}
+// 	return last_block, nil
+// }

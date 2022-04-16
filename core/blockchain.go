@@ -26,7 +26,7 @@ type Chain struct {
 	LastBlock   types.Block
 	TxPool      pool
 	ChainState  chainstate
-	DB          database.Database
+	DB          database.DB
 	Engine      consensus.Engin
 	Validator   Validator
 	MinerAdd    types.Address
@@ -48,7 +48,7 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 		ChainHeight: 0,
 		LastBlock:   *types.NewBlock(),
 
-		Engine: pow.NewPowEngine(),
+		Engine: pow.NewEngine(),
 
 		MinerAdd:   miner,
 		NMU:        &sync.Mutex{},
@@ -63,7 +63,7 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 	c.Miner = NewMiner(c)
 	c.Validator = NewValidator(c)
 	c.Config = config.NewConfig(filepath.Join(c.DBPath, "/config.yaml"))
-	c.DB.SetupDB(filepath.Join(c.DBPath, "/blocks"))
+	c.DB = database.SetupDB(filepath.Join(c.DBPath, "/blocks"))
 	c.Node = types.NewNode(c.Config, c.Port, c.LastBlock.BH.BlockHash, c.ChainHeight)
 
 	return c, nil

@@ -5,13 +5,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"fmt"
+	"log"
 	"math/big"
 	"time"
 )
 
 type Transaction struct {
-	Timestamp time.Time
+	Timestamp time.Duration
 	TxID      []byte
 	TxInputs  []*TxIn
 	TxOutputs []*TxOut
@@ -72,14 +72,13 @@ func (tx *Transaction) IsValid(u []*UTXO) bool {
 			}
 
 		}
-
 		if len(checker) == len(tx.TxInputs) && tx.Checksig() && tx.CheckHash() {
 			return true
 		}
 		return false
 	}
 
-	return tx.Checksig() && tx.CheckHash()
+	return tx.CheckHash()
 }
 
 func (tx *Transaction) CheckHash() bool {
@@ -91,16 +90,18 @@ func (tx *Transaction) CheckHash() bool {
 		in.PublicKey = nil
 		in.Signature = nil
 	}
-
-	return bytes.Equal(hash, Hash(snapTx))
+	if !bytes.Equal(hash, Hash(snapTx)) {
+		log.Println("Transaction hash incorrect")
+		return false
+	}
+	return true
 }
 
 func (tx *Transaction) serialize() []byte {
 
-	t, _ := tx.Timestamp.MarshalBinary()
 	b := bytes.Join(
 		[][]byte{
-			t,
+			Int2Hex(int64(tx.Timestamp)),
 			tx.TxID,
 			join(tx.TxInputs),
 			join(tx.TxOutputs),
@@ -124,7 +125,7 @@ func Hash(s serializer) []byte {
 
 func CoinbaseTx(to Address, amount int) *Transaction {
 	tx := &Transaction{
-		Timestamp: time.Now(),
+		Timestamp: time.Duration(time.Now().UTC().UnixNano()),
 		TxID:      []byte{},
 		TxInputs:  []*TxIn{},
 		TxOutputs: []*TxOut{
@@ -177,7 +178,7 @@ func (tx Transaction) Checksig() bool {
 		r.SetBytes(sig[:(sigLen / 2)])
 
 		if !ecdsa.Verify(&rawpubkey, txCopy.serialize(), &r, &s) {
-			fmt.Println("Signature does not match")
+			log.Println("Signature does not match")
 			return false
 		}
 
