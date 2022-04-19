@@ -1,6 +1,7 @@
 package database
 
 import (
+	"errors"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -23,4 +24,33 @@ func (d *database) SaveState(ss map[types.Account][]*types.UTXO, height uint64, 
 	}
 
 	return nil
+}
+
+func (d *database) ReadState() (map[types.Account][]*types.UTXO, error) {
+	ss := make(map[types.Account][]*types.UTXO)
+
+	iter := d.db.NewIterator(nil, nil)
+	for iter.Next() {
+		key := iter.Key()
+		value := iter.Value()
+
+		d, err := Deserialize(value, &tmplState{})
+		if err != nil {
+			return nil, err
+		}
+		if ts, ok := d.(*tmplState); ok {
+			ss[types.Account(key)] = ts.Utxos
+		} else {
+			return nil, errors.New("database:error on reading chain state from database")
+		}
+
+	}
+	iter.Release()
+	err := iter.Error()
+	if err != nil {
+		return nil, err
+	}
+
+	return ss, nil
+
 }

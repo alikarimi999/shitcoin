@@ -26,6 +26,9 @@ type chainstate interface {
 	MinerIsStarting(start bool)
 
 	GenesisUpdate(b *types.Block)
+
+	// Load chain state from database
+	Load() error
 }
 
 type stateTransmitter struct {
@@ -356,4 +359,14 @@ func (s *State) GenesisUpdate(b *types.Block) {
 		s.stableSet.UpdateUtxoSet(tx)
 	}
 	s.save()
+}
+
+func (s *State) Load() error {
+	ss, err := s.DB.ReadState()
+	if err != nil {
+		return err
+	}
+	s.stableSet.Tokens = ss
+	s.memSet = convert(s.stableSet)
+	return nil
 }

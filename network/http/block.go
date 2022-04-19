@@ -18,7 +18,6 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 		return err
 	}
 
-	mb.Mu.Lock()
 	for _, hash := range s.RecievedBlks {
 		if bytes.Equal(hash, mb.Block.BH.BlockHash) {
 			log.Printf("Block %x proccessed before\n", mb.Block.BH.BlockHash)
@@ -27,7 +26,6 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 
 	log.Printf("Block: %d with hash %x mined by node %s and received from Node %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, mb.Miner, mb.Sender)
 	s.RecievedBlks = append(s.RecievedBlks, mb.Block.BH.BlockHash)
-	mb.Mu.Unlock()
 
 	s.Ch.Mu.Lock()
 	defer s.Ch.Mu.Unlock()

@@ -19,6 +19,7 @@ type DB interface {
 	GetBlkHash(index uint64, ro *opt.ReadOptions) ([]byte, error)
 
 	SaveState(ss map[types.Account][]*types.UTXO, height uint64, wo *opt.WriteOptions) error
+	ReadState() (map[types.Account][]*types.UTXO, error)
 }
 type database struct {
 	db *leveldb.DB
