@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
-	network "github.com/alikarimi999/shitcoin/network/http"
+	"github.com/alikarimi999/shitcoin/network"
+	"github.com/alikarimi999/shitcoin/network/client"
+	"github.com/alikarimi999/shitcoin/network/server"
+	netype "github.com/alikarimi999/shitcoin/network/types"
 )
 
 type Commandline struct{}
@@ -84,31 +87,38 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 		log.Fatalln(err)
 	}
 	log.Printf("Starting Node %s\n", c.Node.ID)
-	go c.ChainState.Handler()
-	go c.TxPool.Handler()
-	go c.Miner.Handler()
+
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go c.ChainState.Handler(wg)
+	wg.Add(1)
+	go c.TxPool.Handler(wg)
+	wg.Add(1)
+	go c.Miner.Handler(wg)
 
 	err = c.SetupChain()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	client := &network.Client{
-		Ch:        c,
-		Cl:        http.Client{Timeout: 20 * time.Second},
-		BroadChan: make(chan *network.MsgBlock),
+	client := &client.Client{
+		Ch: c,
+		Cl: http.Client{Timeout: 20 * time.Second},
 	}
-	s := &network.Server{
+	server := &server.Server{
 		Mu:           sync.Mutex{},
 		Ch:           c,
-		Client:       *client,
 		Port:         port,
 		RecievedTxs:  make([][]byte, 30, 60),
 		RecievedBlks: make([][]byte, 10, 20),
+
+		TxCh:  make(chan *netype.MsgTX),
+		BlkCh: make(chan *netype.MsgBlock),
 	}
 
-	go network.RunServer(s, port)
+	wg.Add(1)
+	go network.Setup(client, server, c, wg)
 
-	c.Wg.Wait()
+	wg.Wait()
 }
 
 func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath string) {
@@ -117,34 +127,41 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	if err != nil {
 		log.Fatalln(err)
 	}
-	log.Printf("Starting Node %s\n", c.Node.ID)
-	go c.ChainState.Handler()
-	go c.TxPool.Handler()
-	go c.Miner.Handler()
+	log.Printf("starting node %s\n", c.Node.ID)
 
-	client := &network.Client{
-		Ch:        c,
-		Cl:        http.Client{Timeout: 20 * time.Second},
-		BroadChan: make(chan *network.MsgBlock),
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go c.ChainState.Handler(wg)
+	wg.Add(1)
+	go c.TxPool.Handler(wg)
+	wg.Add(1)
+	go c.Miner.Handler(wg)
+
+	client := &client.Client{
+		Ch: c,
+		Cl: http.Client{Timeout: 20 * time.Second},
 	}
 
-	s := &network.Server{
+	s := &server.Server{
 		Mu:           sync.Mutex{},
 		Ch:           c,
-		Client:       *client,
 		Port:         port,
 		RecievedTxs:  make([][]byte, 30, 60),
 		RecievedBlks: make([][]byte, 10, 20),
+
+		TxCh:  make(chan *netype.MsgTX),
+		BlkCh: make(chan *netype.MsgBlock),
 	}
 
-	err = network.PairNode(c, node)
+	err = client.PairNode(node)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
 	client.IBD()
 
-	go network.RunServer(s, port)
+	wg.Add(1)
+	go network.Setup(client, s, c, wg)
 
-	c.Wg.Wait()
+	wg.Wait()
 
 }

@@ -15,9 +15,9 @@ const (
 	BlockMaxTransactions = 4
 )
 
+// TODO: add memChain in Chain struct
 type Chain struct {
 	Mu *sync.Mutex
-	Wg *sync.WaitGroup
 
 	ChainId     types.Chainid
 	Node        *types.Node
@@ -32,17 +32,17 @@ type Chain struct {
 	MinerAdd    types.Address
 	Miner       miner
 
-	NMU        *sync.Mutex // nodes mutex
-	Peers      map[string]*types.Node
-	DBPath     string
-	Port       int
-	MinedBlock chan *types.Block
+	NMU    *sync.Mutex // nodes mutex
+	Peers  map[string]*types.Node
+	DBPath string
+	Port   int
+
+	MinedBlockCh chan *types.Block
 }
 
 func NewChain(path string, port int, miner []byte) (*Chain, error) {
 	c := &Chain{
 		Mu: &sync.Mutex{},
-		Wg: &sync.WaitGroup{},
 
 		ChainId:     0,
 		ChainHeight: 0,
@@ -50,12 +50,13 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 
 		Engine: pow.NewEngine(),
 
-		MinerAdd:   miner,
-		NMU:        &sync.Mutex{},
-		Peers:      make(map[string]*types.Node),
-		DBPath:     path,
-		Port:       port,
-		MinedBlock: make(chan *types.Block),
+		MinerAdd: miner,
+		NMU:      &sync.Mutex{},
+		Peers:    make(map[string]*types.Node),
+		DBPath:   path,
+		Port:     port,
+
+		MinedBlockCh: make(chan *types.Block),
 	}
 
 	c.TxPool = NewTxPool(c)

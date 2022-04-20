@@ -1,30 +1,31 @@
-package network
+package server
 
 import (
 	"bytes"
 	"fmt"
 	"log"
 
+	netype "github.com/alikarimi999/shitcoin/network/types"
 	"github.com/labstack/echo/v4"
 )
 
 func (s *Server) SendInv(ctx echo.Context) error {
 
-	gi := GetInv{}
+	gi := netype.GetInv{}
 	err := ctx.Bind(&gi)
 	if err != nil {
 		return err
 	}
 	s.Ch.Mu.Lock()
 	defer s.Ch.Mu.Unlock()
-	inv := NewInv()
+	inv := netype.NewInv()
 	inv.NodeId = s.Ch.Node.ID
 	switch gi.InvType {
-	case blockType:
+	case netype.BlockType:
 		log.Printf("Node %s Requests for Block hashes\n", gi.NodeId)
-		inv.InvType = blockType
+		inv.InvType = netype.BlockType
 		last_index := s.Ch.LastBlock.BH.BlockIndex
-		inv.BlocksHash[blockIndex(last_index)] = s.Ch.LastBlock.BH.BlockHash
+		inv.BlocksHash[netype.BlockIndex(last_index)] = s.Ch.LastBlock.BH.BlockHash
 		inv.InvCount++
 
 		for i := last_index - 1; ; i-- {
@@ -33,13 +34,13 @@ func (s *Server) SendInv(ctx echo.Context) error {
 				break
 			}
 			fmt.Printf("Adding block hash %x to inv\n", hash)
-			inv.BlocksHash[blockIndex(i)] = hash
+			inv.BlocksHash[netype.BlockIndex(i)] = hash
 			inv.InvCount++
 		}
 
-	case txType:
+	case netype.TxType:
 		log.Printf("Node %s Requests for Transactions in transaction pool\n", gi.NodeId)
-		inv.InvType = txType
+		inv.InvType = netype.TxType
 		inv.TXs = append(inv.TXs, s.Ch.TxPool.GetPending()...)
 		inv.TXs = append(inv.TXs, s.Ch.TxPool.GetQueue()...)
 		inv.InvCount = len(inv.TXs)

@@ -11,7 +11,7 @@ import (
 )
 
 type miner interface {
-	Handler()
+	Handler(wg *sync.WaitGroup)
 	Start(txs []*types.Transaction, wg *sync.WaitGroup)
 	IsRunning() bool
 	MineGenesis(tx *types.Transaction)
@@ -24,7 +24,6 @@ type tmplBlock struct {
 }
 
 type Miner struct {
-	wg     *sync.WaitGroup
 	c      *Chain
 	engine consensus.Engin
 
@@ -34,16 +33,14 @@ type Miner struct {
 
 func NewMiner(c *Chain) *Miner {
 	return &Miner{
-		wg:      c.Wg,
 		c:       c,
 		engine:  c.Engine,
 		blockCh: make(chan *tmplBlock),
 	}
 }
 
-func (m *Miner) Handler() {
-	m.wg.Add(1)
-	defer m.wg.Done()
+func (m *Miner) Handler(wg *sync.WaitGroup) {
+	defer wg.Done()
 	log.Println("Miner Function start!")
 
 	for {
@@ -61,8 +58,8 @@ func (m *Miner) Handler() {
 				if m.engine.Start(b) {
 					log.Printf("Block %d with hash %x with %d transations Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
 
-					// reciver is in BroadMinedBlock function
-					m.c.MinedBlock <- b.SnapShot()
+					// FIXME:
+					m.c.MinedBlockCh <- b.SnapShot()
 
 					atomic.AddUint64(&m.c.ChainHeight, 1)
 					m.c.Mu.Lock()

@@ -39,7 +39,7 @@ func (d *database) SaveBlock(block *types.Block, sender, miner string, wo *opt.W
 func (d *database) LastBlock(ro *opt.ReadOptions) (*types.Block, error) {
 	hash, err := d.db.Get([]byte("last_hash"), ro)
 	if err != nil || hash == nil {
-		return nil, errors.New("database: there is not any block in database")
+		return nil, errors.New("database: database is empty")
 	}
 	return d.GetBlockH(hash, ro)
 

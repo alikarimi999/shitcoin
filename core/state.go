@@ -14,7 +14,7 @@ import (
 )
 
 type chainstate interface {
-	Handler()
+	Handler(wg *sync.WaitGroup)
 	// if block was mined by this node local must true
 	// if block mined by another node you must send a snapshot of block for preventing data race
 	StateTransition(o any, local bool)
@@ -56,7 +56,6 @@ func NewMemSet() *MemSet {
 
 type State struct {
 	mu *sync.Mutex
-	wg *sync.WaitGroup
 
 	c *Chain
 
@@ -74,7 +73,6 @@ type State struct {
 func NewState(c *Chain) *State {
 	s := &State{
 		mu:              &sync.Mutex{},
-		wg:              c.Wg,
 		c:               c,
 		memSet:          NewMemSet(),
 		memSetSnapshot:  NewMemSet(),
@@ -88,9 +86,8 @@ func NewState(c *Chain) *State {
 	return s
 }
 
-func (s *State) Handler() {
-	s.wg.Add(1)
-	defer s.wg.Done()
+func (s *State) Handler(wg *sync.WaitGroup) {
+	defer wg.Done()
 	log.Println("Chain State Handler start!!!")
 	for {
 		select {

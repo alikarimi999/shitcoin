@@ -1,4 +1,4 @@
-package network
+package server
 
 import (
 	"bytes"
@@ -7,12 +7,13 @@ import (
 	"sort"
 	"sync/atomic"
 
+	netype "github.com/alikarimi999/shitcoin/network/types"
 	"github.com/labstack/echo/v4"
 )
 
 func (s *Server) MinedBlock(ctx echo.Context) error {
 
-	mb := NewMsgBlock()
+	mb := netype.NewMsgBlock()
 	err := ctx.Bind(mb)
 	if err != nil {
 		return err
@@ -66,9 +67,7 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 
 		s.Ch.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
 
-		// Broadcasting valid new Mined block in network
-		// Reciver is BroadBlock function
-		s.Client.BroadChan <- mb
+		s.BlkCh <- mb
 
 	}
 
@@ -76,7 +75,7 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 }
 
 func (s *Server) SendBlock(ctx echo.Context) error {
-	gb := new(GetBlock)
+	gb := new(netype.GetBlock)
 	err := ctx.Bind(gb)
 	if err != nil {
 		return err
@@ -86,11 +85,15 @@ func (s *Server) SendBlock(ctx echo.Context) error {
 	if err != nil {
 		return err
 	}
-	mb := Msgblock(block, s.Ch.Node.ID, "")
+	mb := netype.Msgblock(block, s.Ch.Node.ID, "")
 	fmt.Printf("SendBlock: %x\n", mb.Block.BH.BlockHash)
 
 	fmt.Printf("\nNode %s wants Block %x\n", gb.Node, block.BH.BlockHash)
 	ctx.JSONPretty(200, mb, " ")
 
 	return nil
+}
+
+func (s *Server) GetMsgBlk() chan *netype.MsgBlock {
+	return s.BlkCh
 }

@@ -1,4 +1,4 @@
-package network
+package types
 
 import (
 	"sync"
@@ -7,16 +7,21 @@ import (
 )
 
 type InvType int
-type blockIndex uint64
+type BlockIndex uint64
 
 const (
-	blockType InvType = iota
-	txType
+	BlockType InvType = iota
+	TxType
 )
 
-type msgUTXOSet struct {
+type MsgUTXOSet struct {
 	Account types.Account `json:"account"`
 	Utxos   []*types.UTXO `json:"utxos"`
+}
+
+type MsgTX struct {
+	SenderID string            `json:"sender"`
+	TX       types.Transaction `json:"tx"`
 }
 
 type MsgBlock struct {
@@ -57,7 +62,7 @@ type Inv struct {
 	InvType  InvType
 
 	// a map contain block index and block hash
-	BlocksHash map[blockIndex][]byte
+	BlocksHash map[BlockIndex][]byte
 
 	// slice contain transation pool's transactions hash
 
@@ -69,7 +74,7 @@ func NewInv() *Inv {
 		NodeId:     "",
 		InvCount:   0,
 		InvType:    0,
-		BlocksHash: make(map[blockIndex][]byte),
+		BlocksHash: make(map[BlockIndex][]byte),
 		TXs:        []*types.Transaction{},
 	}
 

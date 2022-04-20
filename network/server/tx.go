@@ -1,4 +1,4 @@
-package network
+package server
 
 import (
 	"bytes"
@@ -6,16 +6,12 @@ import (
 	"log"
 
 	"github.com/alikarimi999/shitcoin/core/types"
+	netype "github.com/alikarimi999/shitcoin/network/types"
 	"github.com/labstack/echo/v4"
 )
 
-type MsgTX struct {
-	SenderID string            `json:"sender"`
-	TX       types.Transaction `json:"tx"`
-}
-
 func (s *Server) getTrx(ctx echo.Context) error {
-	var mt MsgTX
+	var mt netype.MsgTX
 	err := ctx.Bind(&mt)
 
 	if err != nil {
@@ -35,8 +31,8 @@ func (s *Server) getTrx(ctx echo.Context) error {
 		s.Ch.TxPool.UpdatePool(&mt.TX, false)
 		log.Printf("Transaction %x is valid\n", mt.TX.TxID)
 
-		// Broadcast transaction
-		BroadTrx(s.Ch, &mt)
+		// reciever in Protocol BroadTrx
+		s.TxCh <- &mt
 
 		ctx.String(200, fmt.Sprintf("Transaction added to MemPool\n"))
 		return nil
@@ -50,11 +46,15 @@ func (s *Server) getTrx(ctx echo.Context) error {
 func (s *Server) sendUTXOs(ctx echo.Context) error {
 
 	account := ctx.QueryParam("account")
-	msg := msgUTXOSet{
+	msg := netype.MsgUTXOSet{
 		Account: types.Account(account),
 	}
 	msg.Utxos = s.Ch.ChainState.GetTokens(msg.Account)
 
 	ctx.JSONPretty(200, msg, "  ")
 	return nil
+}
+
+func (s *Server) GetMsgTx() chan *netype.MsgTX {
+	return s.TxCh
 }

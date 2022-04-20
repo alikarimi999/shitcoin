@@ -1,4 +1,4 @@
-package network
+package server
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core"
+	netype "github.com/alikarimi999/shitcoin/network/types"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,16 +19,17 @@ type Server struct {
 	Mu           sync.Mutex
 	Ch           *core.Chain
 	Port         int
-	Client       Client
 	RecievedTxs  [][]byte
 	RecievedBlks [][]byte
+
+	// channels
+	TxCh  chan *netype.MsgTX
+	BlkCh chan *netype.MsgBlock
 }
 
-func RunServer(s *Server, port int) {
+func (s *Server) Run(wg *sync.WaitGroup) {
 
-	go s.Client.BroadMinedBlock()
-	go s.Client.BroadBlock()
-
+	defer wg.Done()
 	e := echo.New()
 
 	e.GET("/getutxo", s.sendUTXOs)
@@ -41,7 +44,7 @@ func RunServer(s *Server, port int) {
 	e.GET("/block/:hash", s.block)
 	e.GET("/height", s.SendHeight)
 
-	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
+	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", s.Port)))
 }
 
 // TODO: delete this and use node.NodeHeight

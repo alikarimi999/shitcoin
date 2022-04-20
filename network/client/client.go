@@ -1,4 +1,4 @@
-package network
+package client
 
 import (
 	"bytes"
@@ -16,12 +16,12 @@ import (
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/alikarimi999/shitcoin/core/types"
+	netype "github.com/alikarimi999/shitcoin/network/types"
 )
 
 type Client struct {
-	Ch        *core.Chain
-	Cl        http.Client
-	BroadChan chan *MsgBlock
+	Ch *core.Chain
+	Cl http.Client
 }
 
 // Initial block download refers to the process where nodes synchronize themselves to the network
@@ -47,7 +47,7 @@ func (c *Client) IBD() {
 func (c *Client) Sync(n *types.Node) {
 
 	// Getting hash of remain mined Blocks from sync node
-	inv, err := getInv(blockType, c.Ch.Node.ID, c.Ch.LastBlock.BH.BlockHash, n.FullAdd, c.Cl)
+	inv, err := getInv(netype.BlockType, c.Ch.Node.ID, c.Ch.LastBlock.BH.BlockHash, n.FullAdd, c.Cl)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -55,12 +55,12 @@ func (c *Client) Sync(n *types.Node) {
 	// Downloading mined Blocks
 	// here we assumed map is sorted by blockIndex
 	for i, hash := range inv.BlocksHash {
-		if i != blockIndex(atomic.LoadUint64(&c.Ch.ChainHeight)) {
+		if i != netype.BlockIndex(atomic.LoadUint64(&c.Ch.ChainHeight)) {
 			break
 		}
 		fmt.Printf("Sync %x\n", hash)
 		mb := getBlock(hash, c.Ch.Node.ID, n.FullAdd, c.Cl)
-		if reflect.DeepEqual(mb, NewMsgBlock()) {
+		if reflect.DeepEqual(mb, netype.NewMsgBlock()) {
 			break
 		}
 		fmt.Printf("... Block %x Downloaded from Node %s\n", mb.Block.BH.BlockHash, mb.Sender)
@@ -115,13 +115,13 @@ func getHeight(address string) (uint64, error) {
 // this function download transactions from sync node transaction pool
 func downloadTxPool(c *core.Chain, dst string) {
 	log.Println("Requesting transactions hashs of transaction pool")
-	inv, err := getInv(txType, c.Node.ID, c.Node.LastHash, dst, http.Client{Timeout: 20 * time.Second})
+	inv, err := getInv(netype.TxType, c.Node.ID, c.Node.LastHash, dst, http.Client{Timeout: 20 * time.Second})
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	if inv.InvType != txType {
+	if inv.InvType != netype.TxType {
 		log.Println("Incorrect data sended by sync node")
 	}
 
@@ -137,9 +137,12 @@ func downloadTxPool(c *core.Chain, dst string) {
 
 }
 
-func getBlock(hash []byte, nid string, syncAddress string, cl http.Client) *MsgBlock {
-	data := GetBlock{nid, hash}
-	mb := NewMsgBlock()
+func getBlock(hash []byte, nid string, syncAddress string, cl http.Client) *netype.MsgBlock {
+	data := netype.GetBlock{
+		Node:      nid,
+		BlockHash: hash,
+	}
+	mb := netype.NewMsgBlock()
 
 	msg, err := json.Marshal(data)
 	if err != nil {
@@ -169,9 +172,9 @@ func getBlock(hash []byte, nid string, syncAddress string, cl http.Client) *MsgB
 
 }
 
-func getInv(invType InvType, nid string, lh []byte, syncAddress string, cl http.Client) (*Inv, error) {
+func getInv(invType netype.InvType, nid string, lh []byte, syncAddress string, cl http.Client) (*netype.Inv, error) {
 
-	gi := GetInv{
+	gi := netype.GetInv{
 		NodeId:   nid,
 		InvType:  invType,
 		LastHash: lh,
@@ -189,7 +192,7 @@ func getInv(invType InvType, nid string, lh []byte, syncAddress string, cl http.
 		log.Println(err.Error())
 		return nil, errors.New("unsuccessful")
 	}
-	inv := NewInv()
+	inv := netype.NewInv()
 	json.Unmarshal(body, inv)
 	return inv, nil
 
@@ -205,7 +208,10 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 	for _, n := range c.Peers {
 		src_nodes = append(src_nodes, n)
 	}
-	gn := &GetNode{src_nodes, nil}
+	gn := &netype.GetNode{
+		SrcNodes:   src_nodes,
+		ShareNodes: nil,
+	}
 
 	b, _ := json.Marshal(gn)
 	resp, err := http.Post(fmt.Sprintf("%s/getnode", dst), "application/json", bytes.NewReader(b))
@@ -219,7 +225,7 @@ func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
 		fmt.Println(err.Error())
 		return src_nodes
 	}
-	gn = new(GetNode)
+	gn = new(netype.GetNode)
 	err = json.Unmarshal(body, gn)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -317,7 +323,7 @@ func NodeInfo(dst string, cl http.Client) (*types.Node, error) {
 }
 
 // this function pair two node in same network and download genesis block if it's needed
-func PairNode(c *core.Chain, dst string) error {
+func (c *Client) PairNode(dst string) error {
 
 	cl := http.Client{Timeout: 20 * time.Second}
 	node, err := NodeInfo(dst, cl)
@@ -325,29 +331,29 @@ func PairNode(c *core.Chain, dst string) error {
 		log.Fatalln(err)
 	}
 
-	if atomic.LoadUint64(&c.ChainHeight) == 0 {
+	if atomic.LoadUint64(&c.Ch.ChainHeight) == 0 {
 		// Downloading genesis block
 		mb := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
 
-		c.LastBlock = *mb.Block
-		atomic.AddUint64(&c.ChainHeight, 1)
+		c.Ch.LastBlock = *mb.Block
+		atomic.AddUint64(&c.Ch.ChainHeight, 1)
 
 		// update Node
-		c.Node.GenesisHash = mb.Block.BH.BlockHash
-		c.Node.LastHash = mb.Block.BH.BlockHash
+		c.Ch.Node.GenesisHash = mb.Block.BH.BlockHash
+		c.Ch.Node.LastHash = mb.Block.BH.BlockHash
 
-		c.TxPool.UpdatePool(mb.Block, false)
-		c.ChainState.StateTransition(mb.Block, false)
+		c.Ch.TxPool.UpdatePool(mb.Block, false)
+		c.Ch.ChainState.StateTransition(mb.Block, false)
 
 		// Save Genesis block in database
-		err = c.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
+		err = c.Ch.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
 		if err != nil {
 			log.Fatalln(err)
 		}
 		fmt.Printf("Genesis Block added to database\n")
 	}
 
-	err = ShareNode(c, dst, cl)
+	err = ShareNode(c.Ch, dst, cl)
 	if err != nil {
 		return err
 	}
@@ -356,73 +362,34 @@ func PairNode(c *core.Chain, dst string) error {
 }
 
 // Broadcast received transaction to  Peers
-func BroadTrx(c *core.Chain, mt *MsgTX) {
-	cl := http.Client{Timeout: 5 * time.Second}
+func (c *Client) BroadTx(mt *netype.MsgTX) {
 
-	for _, n := range c.Peers {
+	for _, n := range c.Ch.Peers {
 		if mt.SenderID != n.ID {
-			mt.SenderID = c.Node.ID
+			mt.SenderID = c.Ch.Node.ID
 			b, _ := json.Marshal(mt)
 			log.Printf("Sending Transaction %x to Node %s\n", mt.TX.TxID, n.ID)
-			cl.Post(fmt.Sprintf("%s/sendtrx", n.FullAdd), "application/json", bytes.NewReader(b))
+			c.Cl.Post(fmt.Sprintf("%s/sendtrx", n.FullAdd), "application/json", bytes.NewReader(b))
 		}
 	}
 }
 
-// This function Broadcast a new mined block in network
-func (c *Client) BroadMinedBlock() {
+func (c *Client) BroadBlock(mb *netype.MsgBlock) {
 
-	for {
-		// Sender is Miner function
-		block := <-c.Ch.MinedBlock
-		mb := MsgBlock{
-			Mu:     &sync.Mutex{},
-			Sender: c.Ch.Node.ID,
-			Block:  block,
-			Miner:  c.Ch.Node.ID,
+	for _, node := range c.Ch.Peers {
+		// dont send to miner of block or sender
+		if mb.Sender == node.ID || c.Ch.Node.ID == node.ID {
+			continue
 		}
 
-		c.Ch.NMU.Lock()
-		nodes := c.Ch.Peers
+		prev_sender := mb.Sender
 
-		for _, node := range nodes {
-			// dont send to miner of block or sender
-			if mb.Sender == node.ID || c.Ch.Node.ID == node.ID {
-				continue
-			}
+		// Set new sender
+		mb.Sender = c.Ch.Node.ID
 
-			b, _ := json.Marshal(mb)
-			log.Printf("Sending New Mined block %d: %x to %s\n", block.BH.BlockIndex, block.BH.BlockHash, node.ID)
-			c.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
-		}
-		c.Ch.NMU.Unlock()
-	}
-}
-
-func (c *Client) BroadBlock() {
-
-	for {
-		// Sender is MinedBlock function
-		mb := <-c.BroadChan
-
-		mb.Mu.Lock()
-		defer mb.Mu.Unlock()
-		for _, node := range c.Ch.Peers {
-			// dont send to miner of block or sender
-			if mb.Sender == node.ID || c.Ch.Node.ID == node.ID {
-				continue
-			}
-
-			prev_sender := mb.Sender
-
-			// Set new sender
-			mb.Sender = c.Ch.Node.ID
-
-			b, _ := json.Marshal(mb)
-			fmt.Printf("Sending block %d: %x to %s which recieved from %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, node.ID, prev_sender)
-			c.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
-
-		}
+		b, _ := json.Marshal(mb)
+		fmt.Printf("Sending block %d: %x to %s which recieved from %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, node.ID, prev_sender)
+		c.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
 
 	}
 }

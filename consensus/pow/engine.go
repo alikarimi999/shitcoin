@@ -59,16 +59,16 @@ search:
 
 		select {
 		case <-e.abort:
-			log.Printf("POW Engine nonce search for block %d aborted\n", e.block.BH.BlockIndex)
+			log.Println("searching for nonce aborted")
 			break search
 		case <-e.pause:
-			log.Printf("POW Engine nonce search for block %d paused\n", e.block.BH.BlockIndex)
+			log.Println("searching for nonce paused")
 			select {
 			case <-e.resume:
-				log.Printf("POW Engine nonce search for block %d resumed\n", e.block.BH.BlockIndex)
+				log.Println("searching for nonce resumed")
 				continue search
 			case <-e.abort:
-				log.Printf("POW Engine nonce search for block %d aborted\n", e.block.BH.BlockIndex)
+				log.Println("searching for nonce aborted")
 				break search
 			}
 		default:

@@ -2,14 +2,18 @@ package database
 
 import (
 	"errors"
+	"log"
 	"time"
 
 	"github.com/alikarimi999/shitcoin/core/types"
+	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 func (d *database) SaveState(ss map[types.Account][]*types.UTXO, height uint64, wo *opt.WriteOptions) error {
 
+	batch := new(leveldb.Batch)
+	defer batch.Reset()
 	for a, s := range ss {
 		ts := tmplState{
 			Chain_height: height,
@@ -17,13 +21,12 @@ func (d *database) SaveState(ss map[types.Account][]*types.UTXO, height uint64, 
 			Owner:        []byte(a),
 			Utxos:        s,
 		}
-		err := d.db.Put(ts.Owner, Serialize(&ts), wo)
-		if err != nil {
-			return err
-		}
-	}
 
-	return nil
+		batch.Put(ts.Owner, Serialize(&ts))
+	}
+	err := d.db.Write(batch, wo)
+	log.Println("save chain state on database")
+	return err
 }
 
 func (d *database) ReadState() (map[types.Account][]*types.UTXO, error) {

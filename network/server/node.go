@@ -1,47 +1,12 @@
-package network
+package server
 
 import (
 	"fmt"
-	"sync/atomic"
 
-	"github.com/alikarimi999/shitcoin/core"
 	"github.com/alikarimi999/shitcoin/core/types"
+	netype "github.com/alikarimi999/shitcoin/network/types"
 	"github.com/labstack/echo/v4"
 )
-
-const (
-	MaxPeers int = 8
-	MaxNodesQueue
-)
-
-type NodesQueue struct {
-	nodes chan *types.Node
-}
-
-func NewNodesQueue(size int) *NodesQueue {
-	return &NodesQueue{
-		nodes: make(chan *types.Node, size),
-	}
-}
-
-func (n *NodesQueue) Push(node *types.Node) {
-	select {
-	case n.nodes <- node:
-	default:
-		// todo: right this shit
-		fmt.Println("Nodes Queue is full")
-	}
-}
-
-func (n *NodesQueue) Pop() *types.Node {
-	select {
-	case node := <-n.nodes:
-		return node
-	default:
-		fmt.Println("Nodes Queue is empty ")
-		return &types.Node{}
-	}
-}
 
 func (s *Server) SendNodeInfo(ctx echo.Context) error {
 	node := s.Ch.Node
@@ -54,7 +19,7 @@ func (s *Server) SendNodeInfo(ctx echo.Context) error {
 }
 
 func (s *Server) SendNodes(ctx echo.Context) error {
-	gn := &GetNode{}
+	gn := &netype.GetNode{}
 
 	err := ctx.Bind(gn)
 	if err != nil {
@@ -67,10 +32,10 @@ func (s *Server) SendNodes(ctx echo.Context) error {
 	fmt.Printf("Node %s with Address %s Requesitng new node\n", gn.SrcNodes[0].ID, gn.SrcNodes[0].FullAdd)
 
 	s.Ch.NMU.Lock()
-	gn.ShareNodes = collectNodes(s.Ch, gn.SrcNodes, senderID)
+	gn.ShareNodes = s.collectNodes(gn.SrcNodes, senderID)
 
 	for _, n := range gn.SrcNodes {
-		if len(s.Ch.Peers) >= MaxPeers {
+		if len(s.Ch.Peers) >= 8 {
 			break
 		}
 		if _, ok := s.Ch.Peers[n.ID]; !ok && n.ID != s.Ch.Node.ID {
@@ -78,30 +43,32 @@ func (s *Server) SendNodes(ctx echo.Context) error {
 			fmt.Printf("...Add Node %s with address %s to Peers\n", n.ID, n.FullAdd)
 		}
 
-		h := atomic.LoadUint64(&s.Ch.ChainHeight)
-		if h < n.NodeHeight {
-			fmt.Printf("... Node %s had %d mined block more\n", n.ID, n.NodeHeight-h)
-			fmt.Printf("... Trying to sync with Node %s\n", n.ID)
-			s.Ch.Mu.Lock()
-			s.Client.Sync(n)
-			s.Ch.Mu.Unlock()
-		}
+		// FIXME:
+		// h := atomic.LoadUint64(&s.Ch.ChainHeight)
+		// if h < n.NodeHeight {
+		// 	fmt.Printf("... Node %s had %d mined block more\n", n.ID, n.NodeHeight-h)
+		// 	fmt.Printf("... Trying to sync with Node %s\n", n.ID)
+		// 	s.Ch.Mu.Lock()
+
+		// 	// s.Client.Sync(n)
+		// 	s.Ch.Mu.Unlock()
+		// }
 	}
 	defer s.Ch.NMU.Unlock()
 	ctx.JSONPretty(200, gn, " ")
 	return nil
 }
 
-func collectNodes(c *core.Chain, src []*types.Node, sender string) []*types.Node {
+func (s *Server) collectNodes(src []*types.Node, sender string) []*types.Node {
 	share_nodes := []*types.Node{}
 
 	// first node that any node share to other nodes refers to itself
-	n := c.Node
+	n := s.Ch.Node
 	share_nodes = append(share_nodes, n)
 	fmt.Printf("...Sending Node %s\n", n.ID)
 
 Out:
-	for _, node := range c.Peers {
+	for _, node := range s.Ch.Peers {
 
 		// every node share 1 Peers an itself address
 		// this made applicant node to requests other nodes for sharing their nodes too

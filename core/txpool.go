@@ -17,7 +17,7 @@ type pool interface {
 	// if block mined by another node you must send block snapshot to prevent data race
 	// if block mined by this node local must set true
 	UpdatePool(o any, local bool)
-	Handler()
+	Handler(wg *sync.WaitGroup)
 	ContinueHandler(cont bool)
 	GetWaitGroup() *sync.WaitGroup
 	GetQueue() []*types.Transaction
@@ -29,7 +29,6 @@ type pool interface {
 type TxPool struct {
 	Mu *sync.Mutex
 	c  *Chain
-	wg *sync.WaitGroup
 
 	WG         *sync.WaitGroup
 	queueTxs   Transactions // verified transactions that recieved and didn't add to any block yet
@@ -47,7 +46,6 @@ func NewTxPool(c *Chain) *TxPool {
 	t := &TxPool{
 		Mu:            &sync.Mutex{},
 		c:             c,
-		wg:            c.Wg,
 		WG:            &sync.WaitGroup{},
 		queueTxs:      make(Transactions),
 		pendingTxs:    make(Transactions),
@@ -61,10 +59,8 @@ func NewTxPool(c *Chain) *TxPool {
 	return t
 }
 
-func (tp *TxPool) Handler() {
-	tp.wg.Add(1)
-	defer tp.wg.Done()
-
+func (tp *TxPool) Handler(wg *sync.WaitGroup) {
+	defer wg.Done()
 	log.Println("Transaction Pool handler start!!!")
 	for {
 		select {
