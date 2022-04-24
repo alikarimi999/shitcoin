@@ -22,7 +22,7 @@ func (s *Server) SendInv(ctx echo.Context) error {
 	inv.NodeId = s.Ch.Node.ID
 	switch gi.InvType {
 	case netype.BlockType:
-		log.Printf("Node %s Requests for Block hashes\n", gi.NodeId)
+		log.Printf("node %s requests for block hashes\n", gi.NodeId)
 		inv.InvType = netype.BlockType
 		last_index := s.Ch.LastBlock.BH.BlockIndex
 		inv.BlocksHash[netype.BlockIndex(last_index)] = s.Ch.LastBlock.BH.BlockHash
@@ -33,13 +33,13 @@ func (s *Server) SendInv(ctx echo.Context) error {
 			if err != nil || bytes.Equal(hash, gi.LastHash) {
 				break
 			}
-			fmt.Printf("Adding block hash %x to inv\n", hash)
+			fmt.Printf("adding block hash %x to inv\n", hash)
 			inv.BlocksHash[netype.BlockIndex(i)] = hash
 			inv.InvCount++
 		}
 
 	case netype.TxType:
-		log.Printf("Node %s Requests for Transactions in transaction pool\n", gi.NodeId)
+		log.Printf("node %s requests for transactions in transaction pool\n", gi.NodeId)
 		inv.InvType = netype.TxType
 		inv.TXs = append(inv.TXs, s.Ch.TxPool.GetPending()...)
 		inv.TXs = append(inv.TXs, s.Ch.TxPool.GetQueue()...)

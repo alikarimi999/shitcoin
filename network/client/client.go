@@ -10,9 +10,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/alikarimi999/shitcoin/core"
 	"github.com/alikarimi999/shitcoin/core/types"
@@ -22,6 +20,8 @@ import (
 type Client struct {
 	Ch *core.Chain
 	Cl http.Client
+
+	PeerSet *netype.PeerSet
 }
 
 // Initial block download refers to the process where nodes synchronize themselves to the network
@@ -31,10 +31,9 @@ func (c *Client) IBD() {
 	// sync node is node with best chain
 	syncNode := &types.Node{}
 
-	c.Ch.Mu.Lock()
-	defer c.Ch.Mu.Unlock()
-
-	for _, node := range c.Ch.Peers {
+	c.PeerSet.Mu.Lock()
+	defer c.PeerSet.Mu.Unlock()
+	for _, node := range c.PeerSet.Peers {
 		if syncNode.NodeHeight <= node.NodeHeight {
 			syncNode = node
 		}
@@ -45,6 +44,10 @@ func (c *Client) IBD() {
 
 // sync with node that has a bigger chain
 func (c *Client) Sync(n *types.Node) {
+
+	if atomic.LoadUint64(&c.Ch.ChainHeight) == 0 {
+		c.getGen(n)
+	}
 
 	// Getting hash of remain mined Blocks from sync node
 	inv, err := getInv(netype.BlockType, c.Ch.Node.ID, c.Ch.LastBlock.BH.BlockHash, n.FullAdd, c.Cl)
@@ -86,7 +89,6 @@ func (c *Client) Sync(n *types.Node) {
 	if err != nil {
 		return
 	}
-	fmt.Printf("HEIGHT >>>> %d  %d\n", atomic.LoadUint64(&c.Ch.ChainHeight), height)
 	if atomic.LoadUint64(&c.Ch.ChainHeight) == height {
 		downloadTxPool(c.Ch, n.FullAdd)
 		fmt.Println(".....  Nodes Synced Now!  .....")
@@ -109,66 +111,6 @@ func getHeight(address string) (uint64, error) {
 		return 0, err
 	}
 	return uint64(s), nil
-
-}
-
-// this function download transactions from sync node transaction pool
-func downloadTxPool(c *core.Chain, dst string) {
-	log.Println("Requesting transactions hashs of transaction pool")
-	inv, err := getInv(netype.TxType, c.Node.ID, c.Node.LastHash, dst, http.Client{Timeout: 20 * time.Second})
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	if inv.InvType != netype.TxType {
-		log.Println("Incorrect data sended by sync node")
-	}
-
-	for _, tx := range inv.TXs {
-		log.Printf("Transaction %x recieved from %s\n", tx.TxID, inv.NodeId)
-		if c.Validator.ValidateTX(tx) {
-			c.TxPool.UpdatePool(tx, false)
-			log.Printf("Transaction %x is valid\n", tx.TxID)
-			continue
-		}
-		log.Printf("Transaction %x is not valid\n", tx.TxID)
-	}
-
-}
-
-func getBlock(hash []byte, nid string, syncAddress string, cl http.Client) *netype.MsgBlock {
-	data := netype.GetBlock{
-		Node:      nid,
-		BlockHash: hash,
-	}
-	mb := netype.NewMsgBlock()
-
-	msg, err := json.Marshal(data)
-	if err != nil {
-		fmt.Println(err.Error())
-		return mb
-	}
-	resp, err := cl.Post(fmt.Sprintf("%s/getblock", syncAddress), "application/json", bytes.NewReader(msg))
-	if err != nil {
-		fmt.Println(err.Error())
-		return mb
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err.Error())
-		return mb
-	}
-	err = json.Unmarshal(body, mb)
-	if err != nil {
-		fmt.Println(err.Error())
-		return mb
-	}
-	fmt.Printf("getBlock %x\n", mb.Block.BH.BlockHash)
-
-	// FIXME:
-	mb.Mu = &sync.Mutex{}
-	return mb
 
 }
 
@@ -198,198 +140,9 @@ func getInv(invType netype.InvType, nid string, lh []byte, syncAddress string, c
 
 }
 
-func GetNewNodes(c *core.Chain, dst string, cl http.Client) []*types.Node {
-
-	src_nodes := []*types.Node{}
-
-	// first element in slice always refer to node itself
-	src_nodes = append(src_nodes, c.Node)
-
-	for _, n := range c.Peers {
-		src_nodes = append(src_nodes, n)
-	}
-	gn := &netype.GetNode{
-		SrcNodes:   src_nodes,
-		ShareNodes: nil,
-	}
-
-	b, _ := json.Marshal(gn)
-	resp, err := http.Post(fmt.Sprintf("%s/getnode", dst), "application/json", bytes.NewReader(b))
-	if err != nil {
-		fmt.Println(err.Error())
-		return src_nodes
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err.Error())
-		return src_nodes
-	}
-	gn = new(netype.GetNode)
-	err = json.Unmarshal(body, gn)
-	if err != nil {
-		fmt.Println(err.Error())
-		return src_nodes
-	}
-
-	// first DstNodes always is the node that share it's Peers with this node
-	gn.ShareNodes[0].FullAdd = dst
-	return gn.ShareNodes
-}
-
-// This function help to obtain some node addresses of network and add these Peers
-func ShareNode(c *core.Chain, dst string, cl http.Client) error {
-
-	// nodes that we didn't ask to share their nodes with us yet
-	nq := NewNodesQueue(MaxNodesQueue)
-
-Out:
-	for i := 0; i <= MaxPeers; i++ {
-		fmt.Printf("Requesting New Nodes from Node Address %s\n", dst)
-
-		if len(c.Peers) >= MaxPeers {
-			return fmt.Errorf("...this node has enough Peers")
-		}
-		share_nodes := GetNewNodes(c, dst, cl)
-		if len(share_nodes) == 0 {
-			fmt.Printf("...Node %s hadn't new node to share with us", dst)
-			continue
-		}
-
-		for _, n := range share_nodes {
-
-			fmt.Printf("...This Node %s Recieved from %s\n", n.ID, dst)
-
-			if len(c.Peers) >= MaxPeers {
-				break Out
-			}
-
-			// dont add if n refers to this node
-			if n.ID == c.Node.ID {
-				continue
-			}
-			if _, ok := c.Peers[n.ID]; ok {
-				fmt.Println("...Node already exist")
-				continue
-			}
-
-			c.Peers[n.ID] = n
-			fmt.Printf("...Node %s with address %s added to Peers\n", n.ID, n.FullAdd)
-
-			// dont send getnode to previous destination node again
-			if n.FullAdd != dst {
-				nq.Push(n)
-			}
-		}
-
-		// get new nodes from nodes that sends by previous nodes
-
-		dst = nq.Pop().FullAdd
-		if dst == "" {
-			break
-		}
-
-	}
-
-	return nil
-}
-
 // Check if two nodes have same genesis block or not
 // only if nodes have same genesis block can pair
 // and return genesis block and a boolean
 func IsInSameNet(n1 *types.Node, n2 *types.Node) bool {
 	return bytes.Equal(n1.GenesisHash, n2.GenesisHash)
-}
-
-func NodeInfo(dst string, cl http.Client) (*types.Node, error) {
-
-	node := &types.Node{}
-	resp, err := cl.Get(fmt.Sprintf("%s/nodeinfo", dst))
-	if err != nil {
-		return node, err
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return node, err
-	}
-	err = json.Unmarshal(body, node)
-	if err != nil {
-		return node, err
-	}
-	node.FullAdd = dst
-	return node, nil
-
-}
-
-// this function pair two node in same network and download genesis block if it's needed
-func (c *Client) PairNode(dst string) error {
-
-	cl := http.Client{Timeout: 20 * time.Second}
-	node, err := NodeInfo(dst, cl)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if atomic.LoadUint64(&c.Ch.ChainHeight) == 0 {
-		// Downloading genesis block
-		mb := getBlock(node.GenesisHash, node.ID, node.FullAdd, cl)
-
-		c.Ch.LastBlock = *mb.Block
-		atomic.AddUint64(&c.Ch.ChainHeight, 1)
-
-		// update Node
-		c.Ch.Node.GenesisHash = mb.Block.BH.BlockHash
-		c.Ch.Node.LastHash = mb.Block.BH.BlockHash
-
-		c.Ch.TxPool.UpdatePool(mb.Block, false)
-		c.Ch.ChainState.StateTransition(mb.Block, false)
-
-		// Save Genesis block in database
-		err = c.Ch.DB.SaveBlock(mb.Block, mb.Sender, mb.Miner, nil)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		fmt.Printf("Genesis Block added to database\n")
-	}
-
-	err = ShareNode(c.Ch, dst, cl)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Broadcast received transaction to  Peers
-func (c *Client) BroadTx(mt *netype.MsgTX) {
-
-	for _, n := range c.Ch.Peers {
-		if mt.SenderID != n.ID {
-			mt.SenderID = c.Ch.Node.ID
-			b, _ := json.Marshal(mt)
-			log.Printf("Sending Transaction %x to Node %s\n", mt.TX.TxID, n.ID)
-			c.Cl.Post(fmt.Sprintf("%s/sendtrx", n.FullAdd), "application/json", bytes.NewReader(b))
-		}
-	}
-}
-
-func (c *Client) BroadBlock(mb *netype.MsgBlock) {
-
-	for _, node := range c.Ch.Peers {
-		// dont send to miner of block or sender
-		if mb.Sender == node.ID || c.Ch.Node.ID == node.ID {
-			continue
-		}
-
-		prev_sender := mb.Sender
-
-		// Set new sender
-		mb.Sender = c.Ch.Node.ID
-
-		b, _ := json.Marshal(mb)
-		fmt.Printf("Sending block %d: %x to %s which recieved from %s\n", mb.Block.BH.BlockIndex, mb.Block.BH.BlockHash, node.ID, prev_sender)
-		c.Cl.Post(fmt.Sprintf("%s/minedblock", node.FullAdd), "application/json", bytes.NewReader(b))
-
-	}
 }

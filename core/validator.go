@@ -23,7 +23,7 @@ func NewValidator(c *Chain) *validator {
 }
 
 func (v *validator) ValidateTX(tx *types.Transaction) bool {
-	account := types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
+	account := types.Account(types.PK2Add(tx.TxInputs[0].PublicKey, false))
 	tokens := v.c.ChainState.GetTokens(account)
 	return tx.IsValid(tokens)
 }

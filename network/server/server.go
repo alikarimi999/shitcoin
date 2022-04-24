@@ -22,6 +22,7 @@ type Server struct {
 	RecievedTxs  [][]byte
 	RecievedBlks [][]byte
 
+	PeerSet *netype.PeerSet
 	// channels
 	TxCh  chan *netype.MsgTX
 	BlkCh chan *netype.MsgBlock
@@ -31,6 +32,7 @@ func (s *Server) Run(wg *sync.WaitGroup) {
 
 	defer wg.Done()
 	e := echo.New()
+	e.HideBanner = true
 
 	e.GET("/getutxo", s.sendUTXOs)
 	e.POST("/sendtrx", s.getTrx)

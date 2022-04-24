@@ -41,7 +41,7 @@ func NewMiner(c *Chain) *Miner {
 
 func (m *Miner) Handler(wg *sync.WaitGroup) {
 	defer wg.Done()
-	log.Println("Miner Function start!")
+	log.Println("miner function start!")
 
 	for {
 
@@ -56,7 +56,7 @@ func (m *Miner) Handler(wg *sync.WaitGroup) {
 				m.c.Mu.Unlock()
 				time.Sleep(2 * time.Second)
 				if m.engine.Start(b) {
-					log.Printf("Block %d with hash %x with %d transations Mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
+					log.Printf("block %d with hash %x with %d transations mined successfully\n", b.BH.BlockIndex, b.BH.BlockHash, len(b.Transactions))
 
 					// FIXME:
 					m.c.MinedBlockCh <- b.SnapShot()
@@ -74,10 +74,9 @@ func (m *Miner) Handler(wg *sync.WaitGroup) {
 
 					err := m.c.DB.SaveBlock(b, m.c.Node.ID, m.c.Node.ID, nil)
 					if err != nil {
-						log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
+						log.Printf("block %x did not add to database\n\n", b.BH.BlockHash)
 						return
 					}
-					log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
 					return
 				}
 			}(tmpl.block, tmpl.wg)
@@ -115,17 +114,16 @@ func (m *Miner) MineGenesis(tx *types.Transaction) {
 		m.c.Node.GenesisHash = b.BH.BlockHash
 
 		m.c.ChainHeight++
-		log.Printf("genesis block mined\nchain height is %d\n", atomic.LoadUint64(&m.c.ChainHeight))
+		log.Printf("genesis block mined\n")
 		m.c.Node.NodeHeight++
 		m.c.LastBlock = *b
 		m.c.Node.LastHash = b.BH.BlockHash
 
 		err := m.c.DB.SaveBlock(b, m.c.Node.ID, m.c.Node.ID, nil)
 		if err != nil {
-			log.Printf("Block %x did not add to database\n\n", b.BH.BlockHash)
+			log.Printf("block %x did not add to database\n\n", b.BH.BlockHash)
 			return
 		}
-		log.Printf("Block %x successfully added to database\n\n", b.BH.BlockHash)
 		return
 
 	}

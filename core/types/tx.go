@@ -2,12 +2,13 @@ package types
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/sha256"
+	"fmt"
 	"log"
-	"math/big"
 	"time"
+
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcutil"
 )
 
 type Transaction struct {
@@ -26,7 +27,7 @@ type TxIn struct {
 	OutPoint  []byte
 	Vout      uint
 	Value     int
-	PublicKey []byte
+	PublicKey []byte // serialized compressed public key
 	Signature []byte
 }
 
@@ -64,7 +65,7 @@ func (tx *Transaction) IsValid(u []*UTXO) bool {
 			for _, utxo := range u {
 				if bytes.Equal(in.OutPoint, utxo.Txid) && in.Vout == utxo.Index && in.Value == utxo.Txout.Value {
 					pkh = utxo.Txout.PublicKeyHash
-					if bytes.Equal(pkh, Hash160(in.PublicKey)) {
+					if bytes.Equal(pkh, btcutil.Hash160(in.PublicKey)) {
 						checker = append(checker, 1)
 						continue IN
 					}
@@ -150,37 +151,52 @@ func (tx Transaction) Checksig() bool {
 		return true
 	}
 
-	txCopy := tx.TrimmeTX()
+	//TODO: delete this
+	// txCopy := tx.TrimmeTX()
 
-	curve := elliptic.P256()
+	// curve := elliptic.P256()
 	for _, in := range tx.TxInputs {
 
-		sig := in.Signature
-		pubKey := in.PublicKey
+		sig, err := btcec.ParseDERSignature(in.Signature, btcec.S256())
+		if err != nil {
+			fmt.Println(err.Error())
+			return false
+		}
+		pubKey, err := btcec.ParsePubKey(in.PublicKey, btcec.S256())
+		if err != nil {
+			fmt.Println(err.Error())
+			return false
+		}
 
-		x := big.Int{}
-		y := big.Int{}
-
-		keyLen := len(pubKey)
-
-		x.SetBytes(pubKey[:(keyLen / 2)])
-		y.SetBytes(pubKey[(keyLen / 2):])
-
-		rawpubkey := ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}
-
-		// convert signature to r,s
-		r := big.Int{}
-		s := big.Int{}
-
-		sigLen := len(sig)
-
-		s.SetBytes(sig[(sigLen / 2):])
-		r.SetBytes(sig[:(sigLen / 2)])
-
-		if !ecdsa.Verify(&rawpubkey, txCopy.serialize(), &r, &s) {
+		if !sig.Verify(tx.TxID, pubKey) {
 			log.Println("Signature does not match")
 			return false
 		}
+
+		//TODO: delete this
+		// 	x := big.Int{}
+		// 	y := big.Int{}
+
+		// 	keyLen := len(pubKey)
+
+		// 	x.SetBytes(pubKey[:(keyLen / 2)])
+		// 	y.SetBytes(pubKey[(keyLen / 2):])
+
+		// 	rawpubkey := ecdsa.PublicKey{Curve: curve, X: &x, Y: &y}
+
+		// 	// convert signature to r,s
+		// 	r := big.Int{}
+		// 	s := big.Int{}
+
+		// 	sigLen := len(sig)
+
+		// 	s.SetBytes(sig[(sigLen / 2):])
+		// 	r.SetBytes(sig[:(sigLen / 2)])
+
+		// 	if !ecdsa.Verify(&rawpubkey, txCopy.serialize(), &r, &s) {
+		// 		log.Println("Signature does not match")
+		// 		return false
+		// 	}
 
 	}
 	return true

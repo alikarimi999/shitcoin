@@ -240,7 +240,7 @@ func (ms *MemSet) update(tx *types.Transaction) {
 
 	if !tx.IsCoinbase() {
 		pk := tx.TxInputs[0].PublicKey
-		account := types.Account(types.Pub2Address(pk, false))
+		account := types.Account(types.PK2Add(pk, false))
 		sender = account
 		for _, in := range tx.TxInputs {
 
@@ -263,7 +263,7 @@ func (ms *MemSet) update(tx *types.Transaction) {
 			continue
 		}
 		pkh = out.PublicKeyHash
-		account := types.Account(types.Pub2Address(pkh, true))
+		account := types.Account(types.PK2Add(pkh, true))
 
 		tu := &tmpUtxo{
 			time: time.Duration(time.Now().UnixNano()),

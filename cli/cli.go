@@ -101,8 +101,9 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 		log.Fatalln(err)
 	}
 	client := &client.Client{
-		Ch: c,
-		Cl: http.Client{Timeout: 20 * time.Second},
+		Ch:      c,
+		PeerSet: netype.NewPeerSet(),
+		Cl:      http.Client{Timeout: 20 * time.Second},
 	}
 	server := &server.Server{
 		Mu:           sync.Mutex{},
@@ -111,8 +112,9 @@ func (cli *Commandline) NewChain(miner []byte, port int, dbPath string) {
 		RecievedTxs:  make([][]byte, 30, 60),
 		RecievedBlks: make([][]byte, 10, 20),
 
-		TxCh:  make(chan *netype.MsgTX),
-		BlkCh: make(chan *netype.MsgBlock),
+		PeerSet: client.PeerSet,
+		TxCh:    make(chan *netype.MsgTX),
+		BlkCh:   make(chan *netype.MsgBlock),
 	}
 
 	wg.Add(1)
@@ -138,8 +140,9 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 	go c.Miner.Handler(wg)
 
 	client := &client.Client{
-		Ch: c,
-		Cl: http.Client{Timeout: 20 * time.Second},
+		Ch:      c,
+		Cl:      http.Client{Timeout: 20 * time.Second},
+		PeerSet: netype.NewPeerSet(),
 	}
 
 	s := &server.Server{
@@ -148,12 +151,13 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 		Port:         port,
 		RecievedTxs:  make([][]byte, 30, 60),
 		RecievedBlks: make([][]byte, 10, 20),
+		PeerSet:      client.PeerSet,
 
 		TxCh:  make(chan *netype.MsgTX),
 		BlkCh: make(chan *netype.MsgBlock),
 	}
 
-	err = client.PairNode(node)
+	err = client.Peers(node)
 	if err != nil {
 		fmt.Println(err.Error())
 	}

@@ -42,7 +42,7 @@ func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 	if !tx.IsCoinbase() {
 
 		pk := tx.TxInputs[0].PublicKey
-		account := Account(Pub2Address(pk, false))
+		account := Account(PK2Add(pk, false))
 		for _, in := range tx.TxInputs {
 
 			for i, utxo := range u.Tokens[account] {
@@ -69,7 +69,7 @@ func (u *UtxoSet) UpdateUtxoSet(tx *Transaction) {
 			Index: uint(index),
 			Txout: out,
 		}
-		u.Tokens[Account(Pub2Address(pkh, true))] = append(u.Tokens[Account(Pub2Address(pkh, true))], utxo)
+		u.Tokens[Account(PK2Add(pkh, true))] = append(u.Tokens[Account(PK2Add(pkh, true))], utxo)
 		// fmt.Printf("One Token with %d value added for %s in UTXO Set\n", utxo.Txout.Value, Pub2Address(utxo.Txout.PublicKeyHash, true))
 	}
 

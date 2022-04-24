@@ -99,9 +99,9 @@ func (e *engine) VerifyBlock(b *types.Block, u *types.UtxoSet, last_block types.
 		for _, tx := range b.Transactions {
 			var account types.Account
 			if tx.IsCoinbase() {
-				account = types.Account(types.Pub2Address(tx.TxOutputs[0].PublicKeyHash, true))
+				account = types.Account(types.PK2Add(tx.TxOutputs[0].PublicKeyHash, true))
 			} else {
-				account = types.Account(types.Pub2Address(tx.TxInputs[0].PublicKey, false))
+				account = types.Account(types.PK2Add(tx.TxInputs[0].PublicKey, false))
 			}
 			if !tx.IsValid(u.Tokens[account]) {
 				log.Printf("Transaction %x is invalid\n", tx.TxID)

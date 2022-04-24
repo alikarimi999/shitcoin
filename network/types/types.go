@@ -6,6 +6,10 @@ import (
 	"github.com/alikarimi999/shitcoin/core/types"
 )
 
+const (
+	MaxPeers int = 8
+)
+
 type InvType int
 type BlockIndex uint64
 
@@ -25,7 +29,6 @@ type MsgTX struct {
 }
 
 type MsgBlock struct {
-	Mu     *sync.Mutex
 	Sender string
 	Block  *types.Block
 	Miner  string
@@ -33,7 +36,6 @@ type MsgBlock struct {
 
 func NewMsgBlock() *MsgBlock {
 	m := &MsgBlock{
-		Mu:    new(sync.Mutex),
 		Block: types.NewBlock(),
 	}
 	return m
@@ -87,4 +89,21 @@ func Msgblock(b *types.Block, sender string, miner string) *MsgBlock {
 		Miner:  miner,
 	}
 	return mb
+}
+
+type PeerSet struct {
+	Peers map[string]*types.Node
+
+	Mu *sync.Mutex
+}
+
+func NewPeerSet() *PeerSet {
+	return &PeerSet{
+		Peers: make(map[string]*types.Node),
+		Mu:    &sync.Mutex{},
+	}
+}
+
+func (p *PeerSet) Add(n *types.Node) {
+	p.Peers[n.ID] = n
 }

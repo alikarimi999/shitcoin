@@ -32,8 +32,6 @@ type Chain struct {
 	MinerAdd    types.Address
 	Miner       miner
 
-	NMU    *sync.Mutex // nodes mutex
-	Peers  map[string]*types.Node
 	DBPath string
 	Port   int
 
@@ -51,8 +49,6 @@ func NewChain(path string, port int, miner []byte) (*Chain, error) {
 		Engine: pow.NewEngine(),
 
 		MinerAdd: miner,
-		NMU:      &sync.Mutex{},
-		Peers:    make(map[string]*types.Node),
 		DBPath:   path,
 		Port:     port,
 

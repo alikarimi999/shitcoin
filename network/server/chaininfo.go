@@ -5,7 +5,9 @@ import (
 )
 
 func (s *Server) peers(ctx echo.Context) error {
-	for _, p := range s.Ch.Peers {
+	s.PeerSet.Mu.Lock()
+	defer s.PeerSet.Mu.Unlock()
+	for _, p := range s.PeerSet.Peers {
 		ctx.JSONPretty(200, p, " ")
 	}
 	return nil
