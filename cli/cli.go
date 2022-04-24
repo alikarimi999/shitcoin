@@ -39,11 +39,11 @@ func (cli *Commandline) Run() {
 	newchain := flag.NewFlagSet("newchain", flag.ExitOnError)
 	connect := flag.NewFlagSet("connect", flag.ExitOnError)
 
-	port_new := newchain.Int("port", 0, "The port that node will listening on")
+	port_new := newchain.Int("port", 5000, "The port that node will listening on")
 	miner_new := newchain.String("miner", "", "The Miner address")
 	dbpath_new := newchain.String("dbpath", "", "Database Path")
 
-	port_con := connect.Int("port", 0, "The port that node will listening on")
+	port_con := connect.Int("port", 5000, "The port that node will listening on")
 	miner_con := connect.String("miner", "", "The Miner address")
 	node_address := connect.String("address", "", "The node address that we want to connect for firsttime")
 	dbpath_con := connect.String("dbpath", "", "Database Path")
