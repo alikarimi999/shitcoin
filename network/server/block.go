@@ -21,7 +21,7 @@ func (s *Server) MinedBlock(ctx echo.Context) error {
 
 	for _, hash := range s.RecievedBlks {
 		if bytes.Equal(hash, mb.Block.BH.BlockHash) {
-			log.Printf("block %x proccessed before\n", mb.Block.BH.BlockHash)
+			return nil
 		}
 	}
 

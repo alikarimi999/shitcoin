@@ -18,8 +18,9 @@ const (
 
 // engine is a consensus engine based on proof-of-work alghorithm
 type engine struct {
-	block  *types.Block
-	target *big.Int
+	block      *types.Block
+	difficulty uint64
+	target     *big.Int
 
 	// block hash
 	result []byte
@@ -35,28 +36,21 @@ type engine struct {
 
 func NewEngine() *engine {
 
+	diff := get_diff()
 	target := big.NewInt(1)
-	target.Lsh(target, 256-uint(get_diff()))
+	target.Lsh(target, 256-uint(diff))
 
 	pe := &engine{
-		block:  types.NewBlock(),
-		target: target,
-		result: []byte{},
-		pause:  make(chan struct{}),
-		resume: make(chan struct{}),
-		abort:  make(chan struct{}),
+		block:      types.NewBlock(),
+		difficulty: diff,
+		target:     target,
+		result:     []byte{},
+		pause:      make(chan struct{}),
+		resume:     make(chan struct{}),
+		abort:      make(chan struct{}),
 	}
 
 	return pe
-}
-
-func get_diff() uint64 {
-	d := os.Getenv("DIFFICULTY")
-	diff, err := strconv.ParseUint(d, 10, 64)
-	if err != nil {
-		return DefaultDifficulty
-	}
-	return diff
 }
 
 func (e *engine) mine() bool {
@@ -105,7 +99,7 @@ search:
 
 func (e *engine) VerifyBlock(b *types.Block, u *types.UtxoSet, last_block types.Block) bool {
 
-	if b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
+	if b.BH.Difficulty == get_diff() && b.BH.BlockIndex-1 == last_block.BH.BlockIndex && bytes.Equal(b.BH.PrevHash, last_block.BH.BlockHash) && b.Validate_hash() {
 
 		for _, tx := range b.Transactions {
 			var account types.Account
@@ -133,7 +127,7 @@ func (e *engine) Start(b *types.Block) bool {
 	if !e.IsRunning() {
 		atomic.StoreInt32(&e.running, 1)
 		e.block = b
-		// time.Sleep(3 * time.Second)
+		e.update_difficulty()
 		return e.mine()
 	}
 	return false
@@ -160,4 +154,21 @@ func (e *engine) Resume() {
 
 func (e *engine) GetHash() []byte {
 	return e.result
+}
+
+func (e *engine) update_difficulty() {
+	diff := get_diff()
+	target := big.NewInt(1)
+	target.Lsh(target, 256-uint(diff))
+	e.difficulty = diff
+	e.block.BH.Difficulty = diff
+}
+
+func get_diff() uint64 {
+	d := os.Getenv("DIFFICULTY")
+	diff, err := strconv.ParseUint(d, 10, 64)
+	if err != nil {
+		return DefaultDifficulty
+	}
+	return diff
 }

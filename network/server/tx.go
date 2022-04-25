@@ -20,7 +20,6 @@ func (s *Server) getTrx(ctx echo.Context) error {
 
 	for _, hash := range s.RecievedTxs {
 		if bytes.Equal(hash, mt.TX.TxID) {
-			log.Printf("Transaction %x proccessed before\n", mt.TX.TxID)
 			return nil
 		}
 	}
