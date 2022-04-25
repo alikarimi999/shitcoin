@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -41,12 +42,12 @@ func (cli *Commandline) Run() {
 
 	port_new := newchain.Int("port", 5000, "The port that node will listening on")
 	miner_new := newchain.String("miner", "", "The Miner address")
-	dbpath_new := newchain.String("dbpath", "", "Database Path")
+	dbpath_new := newchain.String("dbpath", defautlPath(), "Database Path")
 
 	port_con := connect.Int("port", 5000, "The port that node will listening on")
 	miner_con := connect.String("miner", "", "The Miner address")
 	node_address := connect.String("address", "", "The node address that we want to connect for firsttime")
-	dbpath_con := connect.String("dbpath", "", "Database Path")
+	dbpath_con := connect.String("dbpath", defautlPath(), "Database Path")
 
 	switch os.Args[1] {
 	case "newchain":
@@ -65,19 +66,48 @@ func (cli *Commandline) Run() {
 	}
 
 	if newchain.Parsed() {
-		if *port_new == 0 || *miner_new == "" || *dbpath_new == "" {
+		if *port_new == 0 || *dbpath_new == "" {
 			newchain.Usage()
 			runtime.Goexit()
 		}
-		cli.NewChain([]byte(*miner_new), *port_new, *dbpath_new)
+
+		miner := *miner_new
+		if miner == "" {
+			miner = os.Getenv("MINER")
+			if miner == "" {
+				newchain.Usage()
+				runtime.Goexit()
+			}
+		}
+
+		cli.NewChain([]byte(miner), *port_new, *dbpath_new)
 	}
 
 	if connect.Parsed() {
-		if *port_con == 0 || *miner_con == "" || *node_address == "" || *dbpath_con == "" {
+		if *port_con == 0 || *dbpath_con == "" {
 			connect.Usage()
 			runtime.Goexit()
 		}
-		cli.Connect([]byte(*miner_con), *node_address, *port_con, *dbpath_con)
+
+		node := *node_address
+		if node == "" {
+			node = os.Getenv("NODE_ADDRESS")
+			if node == "" {
+				connect.Usage()
+				runtime.Goexit()
+			}
+		}
+
+		miner := *miner_con
+		if miner == "" {
+			miner = os.Getenv("MINER")
+			if miner == "" {
+				newchain.Usage()
+				runtime.Goexit()
+			}
+		}
+
+		cli.Connect([]byte(miner), node, *port_con, *dbpath_con)
 	}
 }
 
@@ -168,4 +198,13 @@ func (cli *Commandline) Connect(miner []byte, node string, port int, dbPath stri
 
 	wg.Wait()
 
+}
+
+func defautlPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return filepath.Join(home, ".shitcoin")
 }

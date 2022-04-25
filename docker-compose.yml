@@ -1,0 +1,55 @@
+version: "3.9"
+services:
+  NODE_0:
+    image: alikarimi999/shitcoin
+    command: shitcoin newchain
+    environment:
+      - MINER=1PGrKNuKLJSpui968RGVGnvHmR7vM9UynE
+      - DIFFICULTY=15
+    ports:
+      - 5000:5000
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/height" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  NODE_1:
+    image: alikarimi999/shitcoin
+    command: shitcoin connect
+    environment:
+      - NODE_ADDRESS=http://NODE_0:5000
+      - MINER=<address>
+      - DIFFICULTY=15
+    depends_on:
+      NODE_0:
+        condition: service_healthy
+    ports:
+      - 5001:5000
+
+  NODE_2:
+    image: alikarimi999/shitcoin
+    command: shitcoin connect
+    environment:
+      - NODE_ADDRESS=http://NODE_0:5000
+      - MINER=<address>
+      - DIFFICULTY=15
+    depends_on:
+      NODE_0:
+        condition: service_healthy
+    ports:
+      - 5002:5000
+
+  NODE_3:
+    image: alikarimi999/shitcoin
+    command: shitcoin connect
+    environment:
+      - NODE_ADDRESS=http://NODE_0:5000
+      - MINER=<address>
+      - DIFFICULTY=15
+    depends_on:
+      NODE_0:
+        condition: service_healthy
+    ports:
+      - 5003:5000

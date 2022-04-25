@@ -5,13 +5,15 @@ import (
 	"log"
 	"math"
 	"math/big"
+	"os"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/alikarimi999/shitcoin/core/types"
 )
 
 const (
-	difficulty uint64 = 14
+	DefaultDifficulty uint64 = 14
 )
 
 // engine is a consensus engine based on proof-of-work alghorithm
@@ -34,7 +36,7 @@ type engine struct {
 func NewEngine() *engine {
 
 	target := big.NewInt(1)
-	target.Lsh(target, 256-uint(difficulty))
+	target.Lsh(target, 256-uint(get_diff()))
 
 	pe := &engine{
 		block:  types.NewBlock(),
@@ -46,6 +48,15 @@ func NewEngine() *engine {
 	}
 
 	return pe
+}
+
+func get_diff() uint64 {
+	d := os.Getenv("DIFFICULTY")
+	diff, err := strconv.ParseUint(d, 10, 64)
+	if err != nil {
+		return DefaultDifficulty
+	}
+	return diff
 }
 
 func (e *engine) mine() bool {
