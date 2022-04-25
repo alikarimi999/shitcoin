@@ -37,6 +37,7 @@ func Setup(cl Client, s Server, c *core.Chain, wg *sync.WaitGroup) {
 		Server: s,
 		c:      c,
 	}
+
 	n.wg.Add(3)
 	go n.Server.Run(n.wg)
 	go n.BroadBlock(n.wg)

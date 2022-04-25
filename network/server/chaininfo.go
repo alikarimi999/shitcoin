@@ -1,6 +1,9 @@
 package server
 
 import (
+	"encoding/hex"
+	"strconv"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -15,13 +18,30 @@ func (s *Server) peers(ctx echo.Context) error {
 }
 
 func (s *Server) block(ctx echo.Context) error {
-	hash := ctx.Param("hash")
+
+	hash := ctx.QueryParam("hash")
 	if hash != "" {
-		block, err := s.Ch.DB.GetBlockH([]byte(hash), nil)
+		xh, err := hex.DecodeString(hash)
+		if err != nil {
+			return err
+		}
+		block, err := s.Ch.DB.GetBlockH(xh, nil)
 		if err != nil {
 			return err
 		}
 		ctx.JSONPretty(200, block, " ")
 	}
+
+	i := ctx.QueryParam("index")
+	index, err := strconv.ParseUint(i, 10, 64)
+	if err != nil {
+		return err
+	}
+	block, err := s.Ch.DB.GetBlockI(index, nil)
+	if err != nil {
+		return err
+	}
+	ctx.JSONPretty(200, block, " ")
+
 	return nil
 }

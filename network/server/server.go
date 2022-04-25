@@ -40,10 +40,10 @@ func (s *Server) Run(wg *sync.WaitGroup) {
 	e.POST("/getblock", s.SendBlock)
 	e.POST("/minedblock", s.MinedBlock)
 	e.POST("/getnode", s.SendNodes)
-	e.GET("nodeinfo", s.SendNodeInfo)
+	e.GET("/nodeinfo", s.SendNodeInfo)
 
 	e.GET("/peers", s.peers)
-	e.GET("/block/:hash", s.block)
+	e.GET("/block", s.block)
 	e.GET("/height", s.SendHeight)
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", s.Port)))
